@@ -1,0 +1,10 @@
+# Copy to .dev.vars for `npx wrangler pages dev public` and to your shell env for `npm run dev`.
+TMDB_API_KEY=your_tmdb_v3_key_or_v4_read_token
+# Optional: official OpenSubtitles API (https://www.opensubtitles.com/consumers). Without it, a keyless fallback is used.
+OPENSUBTITLES_API_KEY=
+OPENSUBTITLES_USERNAME=
+OPENSUBTITLES_PASSWORD=
+# Optional: comma-separated public hosts the /api/proxy edge route may fetch (default: flixhub.net,www.flixhub.net)
+# EDGE_PROXY_HOSTS=flixhub.net,www.flixhub.net
+# Optional: product name sent as the OpenSubtitles User-Agent. Set it to match the consumer you registered at opensubtitles.com.
+# APP_NAME=Reelhouse
