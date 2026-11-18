@@ -1,0 +1,10 @@
+{
+  "files": {
+    "shim/contract-soryn.js": "12b20a81ae1fe1ae9db013b7193523e60232b2f540b9c1ed5040788118445903",
+    "shim/shim-common.js": "895ddb9f807cac0a5a4f083c1d0efd023c6c94f2a7e5d44930b947e226052c52",
+    "soryn/catalog.js": "704ebe9331aa38434989774a768b9d0a467f3b22a148cf661dfcd0008d25d9be",
+    "soryn/source.json": "f51be5497d62e220cef648962d97ae3bc20bed0e11dd9d884c28a9016261f651",
+    "soryn/stream.js": "c207c173d39f7e14fe6f6a46fb801782be180d0b11c976fe94b4099ddb8f34bc"
+  },
+  "version": 1
+}

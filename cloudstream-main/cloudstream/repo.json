@@ -1,0 +1,9 @@
+{
+    "name": "Eclipsia",
+    "iconUrl": "https://csn.eclipsia.dpdns.org/eclipsia.png",
+    "description": "Curated Collection of Providers",
+    "manifestVersion": 1,
+    "pluginLists": [
+        "https://eclipsia.codefloe.page/cloudstream/plugins.json"
+    ]
+}
