@@ -1,0 +1,21 @@
+{
+  "files": {
+    "scrapers/esvyl.js": "1c025587764ef6987d07384b55d61797a350ed62a6a2e8f5a7494d3e3a1f79a1",
+    "scrapers/gravix.js": "d5b4b4dc3b53a96531049160af13539ce3c925d1816be1f0cb9ba416a3c8a58f",
+    "scrapers/ilvyrel.js": "15c661b8fa4d2fa8d25f74015aa04e5c69d2f7607db7f340910ddcc5b3319aab",
+    "scrapers/lenyr.js": "8b0024d8d8358f75b4f9d14cc7595b0812bdd906a71986dbfa5367bdc8a3b103",
+    "scrapers/noctyx.js": "3898bd4cb3dac24bf4850ce6c81429fae3daf0cc846c58ba56546b0a03b945ed",
+    "scrapers/onyxia.js": "41983353aa3cd7c92f651dd83b39cf814243a1bd70d69295178dd6821a692884",
+    "scrapers/ozeris.js": "f56c75e772f16bec7f2163cd2ce01fd2d7a0d5f4f6b714d6251d64d98f7117ac",
+    "scrapers/praxiel.js": "be604839f6d140222498605bdfae3b91ab8e0c70a77f2410a9b9498cb5182efa",
+    "scrapers/quinox.js": "9638f3289787c2eb3f1e761dbc8c4184e78692019d4e7d0115db1b3b0cb23ceb",
+    "scrapers/rylvane.js": "140300900ce0937cc2e0c28d14d7fc8e1fe0fc3ca79880a4daaa4af39e272bcc",
+    "scrapers/vyranel.js": "4caa0cae67869f784107d04a76a5bf4dfc06d895f1bff2db7f1d93589f19c1c5",
+    "scrapers/xandril.js": "60aa7e83b22503847f6692c0da2a7152b73ece6bfedf66a61b1a704ac5a70113",
+    "scrapers/xylos.js": "cbe1d976ffa3d56f7a866ee710d669603b8c13158ee3c016b0c634ca207f8b29",
+    "scrapers/zyrvael.js": "42c41db6f3c031a9ac2e2069e3e220f3d52e47a89a4963f421174e496a4eeda2",
+    "shim/contract-scraper.js": "9f949557eaf716ab366f12e510de84e81266f3008a86119dd985bf2f7bbc38aa",
+    "shim/shim-common.js": "895ddb9f807cac0a5a4f083c1d0efd023c6c94f2a7e5d44930b947e226052c52"
+  },
+  "version": 1
+}

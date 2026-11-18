@@ -1,0 +1,10 @@
+{
+  "files": {
+    "scrapers/bdix-cf.js": "47170deb90fff85b08dd8f12182fbeb557d5fe60dcfb57f239eabe93c8233a90",
+    "scrapers/bdix-df.js": "0cac22ab6238fcb35f16cd383ca4ffb488c82d5dd662f8db85324175159dd2ba",
+    "scrapers/bdix-fh.js": "bb92120afe6ae3e667f5bbe5d2ce4cff33398544e48155a7522b37e521fe1446",
+    "shim/contract-scraper.js": "9f949557eaf716ab366f12e510de84e81266f3008a86119dd985bf2f7bbc38aa",
+    "shim/shim-common.js": "895ddb9f807cac0a5a4f083c1d0efd023c6c94f2a7e5d44930b947e226052c52"
+  },
+  "version": 1
+}

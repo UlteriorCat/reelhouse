@@ -1,0 +1,11 @@
+{
+  "files": {
+    "playz/catalog.js": "f5aaf252d151e482f401ffe9b3e8160277138da0c4f4bed948bdd22c507c18d2",
+    "playz/core.js": "332231a465124bf839ff5543e8a8ff69dd9c27fab0b440ee329e9f0e595826ce",
+    "playz/source.json": "9a59030e07270a1e96b076c31c2b671b9b87bee87b53164f7280b5631a8f91b9",
+    "playz/stream.js": "eb3b9146816361a690924aa37d586275d30710dbd5b1437e322047ed69b7e95b",
+    "shim/contract-playz.js": "6af0d124dcb46c799516eb1660a46e3bfe40cf498cf0aacc712df9e75d7892e8",
+    "shim/shim-common.js": "895ddb9f807cac0a5a4f083c1d0efd023c6c94f2a7e5d44930b947e226052c52"
+  },
+  "version": 1
+}

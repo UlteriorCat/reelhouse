@@ -1,0 +1,11 @@
+[
+  {
+    "id": "misc",
+    "label": "Misc.",
+    "bannerText": "Miscellaneous Providers",
+    "providerIds": [
+      "brellor",
+      "jyniq"
+    ]
+  }
+]

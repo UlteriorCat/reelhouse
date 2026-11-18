@@ -1,0 +1,328 @@
+{
+  "name": "EclipsiaAnime",
+  "version": 10,
+  "scrapers": [
+    {
+      "id": "esvyl",
+      "name": "Esvyl.",
+      "description": "VidBolt • 1080p • Mainstream • Anime",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/esvyl.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "gravix",
+      "name": "Gravix.",
+      "description": "AnimeWorld • Multi Dub • Anime",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/gravix.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja",
+        "hi",
+        "te",
+        "ta"
+      ]
+    },
+    {
+      "id": "ilvyrel",
+      "name": "Ilvyrel.",
+      "description": "ToonWorld4All • Multi Dub • Anime",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/ilvyrel.js",
+      "enabled": true,
+      "formats": [
+        "mkv",
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja",
+        "hi",
+        "te",
+        "ta"
+      ]
+    },
+    {
+      "id": "lenyr",
+      "name": "Lenyr.",
+      "description": "AniZone • Multi Dub • Anime",
+      "version": "2.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/lenyr.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "jp"
+      ]
+    },
+    {
+      "id": "noctyx",
+      "name": "Noctyx.",
+      "description": "Toonix • Anime • Hindi",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/noctyx.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8",
+        "mkv"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "hi"
+      ]
+    },
+    {
+      "id": "onyxia",
+      "name": "Onyxia.",
+      "description": "Ani.Pm • Sub/Dub/HardSub • Anime",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/onyxia.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "ozeris",
+      "name": "Ozeris.",
+      "description": "Anv • Sub/Dub • Anime",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/ozeris.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja"
+      ]
+    },
+    {
+      "id": "praxiel",
+      "name": "Praxiel.",
+      "description": "Re:ANIME • Sub/Dub • Anime",
+      "version": "1.2.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/praxiel.js",
+      "enabled": true,
+      "formats": [
+        "mkv"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "quinox",
+      "name": "Quinox.",
+      "description": "VidNest • 1080p • Mainstream • Anime",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/quinox.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "hi",
+        "es",
+        "ja",
+        "ta",
+        "te"
+      ]
+    },
+    {
+      "id": "rylvane",
+      "name": "Rylvane.",
+      "description": "WcoFlix • HardSub/Dub • Anime",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/rylvane.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "vyranel",
+      "name": "Vyranel.",
+      "description": "AnimeCube • Donghua",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vyranel.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "xandril",
+      "name": "Xandril.",
+      "description": "AniChan • Sub/Dub/HardSub • Anime",
+      "version": "1.5.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/xandril.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8",
+        "mkv"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "jp"
+      ]
+    },
+    {
+      "id": "xylos",
+      "name": "Xylos.",
+      "description": "AniKage • Sub/Dub • Anime",
+      "version": "1.1.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv",
+        "series"
+      ],
+      "filename": "providers/xylos.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "jp"
+      ]
+    },
+    {
+      "id": "zyrvael",
+      "name": "Zyrvael.",
+      "description": "Anikoto • Sub/Dub • Anime",
+      "version": "1.3.0",
+      "author": "Eclipsia",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/zyrvael.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja"
+      ],
+      "hasSettings": true
+    }
+  ]
+}
