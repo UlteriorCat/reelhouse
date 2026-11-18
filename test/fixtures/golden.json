@@ -1,0 +1,215 @@
+{
+  "df-movie-variant2": {
+    "streams": [
+      {
+        "url": "http://172.16.50.12/DHAKA-FLIX-12/English%20Movies/The%20Matrix%20(1999)/The.Matrix.1999.2160p.UHD.BluRay.HDR10.x265.10bit.Atmos.mkv",
+        "quality": "2160p"
+      },
+      {
+        "url": "http://172.16.50.12/DHAKA-FLIX-12/English%20Movies/The%20Matrix%20(1999)/The.Matrix.1999.1080p.BluRay.x264.mp4",
+        "quality": "1080p"
+      },
+      {
+        "url": "http://172.16.50.14/DHAKA-FLIX-14/Hindi%20Movies/The.Matrix.1999.480p.avi",
+        "quality": "480p"
+      },
+      {
+        "url": "http://172.16.50.14/DHAKA-FLIX-12/English%20Movies/The%20Matrix%20(1999)/The.Matrix.1999.1080p.BluRay.x264.mp4",
+        "quality": "1080p"
+      }
+    ],
+    "requests": [
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"The.Matrix\"}}",
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"The\\\\ Matrix\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"The.Matrix\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"The\\\\ Matrix\"}}"
+    ]
+  },
+  "df-movie-variant1-wins": {
+    "streams": [
+      {
+        "url": "http://172.16.50.14/DHAKA-FLIX-14/English%20Movies/The.Matrix.1999.1080p.mkv",
+        "quality": "1080p"
+      }
+    ],
+    "requests": [
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"The.Matrix\"}}",
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"The\\\\ Matrix\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"The.Matrix\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"The\\\\ Matrix\"}}"
+    ]
+  },
+  "df-tv-quirks": {
+    "streams": [
+      {
+        "url": "http://172.16.50.12/DHAKA-FLIX-14/TV-WEB-SERIES/Breaking%20Bad/Season%201/Breaking.Bad.S01E02.720p.mkv",
+        "quality": "720p"
+      },
+      {
+        "url": "http://172.16.50.12/DHAKA-FLIX-14/TV-WEB-SERIES/Breaking%20Bad/Season%201/Breaking.Bad.S01E020.1080p.mkv",
+        "quality": "1080p"
+      },
+      {
+        "url": "http://172.16.50.12/DHAKA-FLIX-14/TV-WEB-SERIES/Breaking%20Bad/Season%201/Breaking.Bad.s01.e02.480p.mp4",
+        "quality": "480p"
+      },
+      {
+        "url": "http://172.16.50.14/DHAKA-FLIX-14/TV-WEB-SERIES/Breaking%20Bad/Season%201/Breaking.Bad.S01E02.720p.mkv",
+        "quality": "720p"
+      },
+      {
+        "url": "http://172.16.50.14/DHAKA-FLIX-14/TV-WEB-SERIES/Breaking%20Bad/Season%201/Breaking.Bad.S01E020.1080p.mkv",
+        "quality": "1080p"
+      },
+      {
+        "url": "http://172.16.50.14/DHAKA-FLIX-14/TV-WEB-SERIES/Breaking%20Bad/Season%201/Breaking.Bad.s01.e02.480p.mp4",
+        "quality": "480p"
+      }
+    ],
+    "requests": [
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"Breaking.Bad\"}}",
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"Breaking\\\\ Bad\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"Breaking.Bad\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"Breaking\\\\ Bad\"}}"
+    ]
+  },
+  "df-punctuation": {
+    "streams": [
+      {
+        "url": "http://172.16.50.12/DHAKA-FLIX-12/English%20Movies/Spider-Man.No.Way.Home.2021.2160p.mkv",
+        "quality": "2160p"
+      }
+    ],
+    "requests": [
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"SpiderMan.No.Way.Home\"}}",
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"SpiderMan\\\\ No\\\\ Way\\\\ Home\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"SpiderMan.No.Way.Home\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"SpiderMan\\\\ No\\\\ Way\\\\ Home\"}}"
+    ]
+  },
+  "df-all-fail": {
+    "streams": [],
+    "requests": [
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"The.Matrix\"}}",
+      "POST http://172.16.50.12/DHAKA-FLIX-12/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-12/\",\"ignorecase\":true,\"pattern\":\"The\\\\ Matrix\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"The.Matrix\"}}",
+      "POST http://172.16.50.14/DHAKA-FLIX-14/ {\"action\":\"get\",\"search\":{\"href\":\"/DHAKA-FLIX-14/\",\"ignorecase\":true,\"pattern\":\"The\\\\ Matrix\"}}"
+    ]
+  },
+  "cf-movie-fallback-host": {
+    "streams": [
+      {
+        "url": "http://example.invalid/m/The.Matrix.1999.1080p.mkv",
+        "quality": "1080p"
+      },
+      {
+        "url": "http://example.invalid/m/The.Matrix.1999.720p.mp4",
+        "quality": "720p"
+      }
+    ],
+    "requests": [
+      "GET http://15.1.1.50:5000/api/posts/11",
+      "GET http://15.1.1.50:5000/api/posts/12",
+      "GET http://15.1.1.50:5000/api/posts?searchTerm=The%20Matrix&order=desc",
+      "GET http://new.circleftp.net:5000/api/posts/11",
+      "GET http://new.circleftp.net:5000/api/posts/12",
+      "GET http://new.circleftp.net:5000/api/posts?searchTerm=The%20Matrix&order=desc"
+    ]
+  },
+  "cf-movie-primary-ok": {
+    "streams": [
+      {
+        "url": "http://example.invalid/m/The.Matrix.1999.1080p.mkv",
+        "quality": "1080p"
+      },
+      {
+        "url": "http://example.invalid/m/The.Matrix.1999.720p.mp4",
+        "quality": "720p"
+      }
+    ],
+    "requests": [
+      "GET http://new.circleftp.net:5000/api/posts/11",
+      "GET http://new.circleftp.net:5000/api/posts/12",
+      "GET http://new.circleftp.net:5000/api/posts?searchTerm=The%20Matrix&order=desc"
+    ]
+  },
+  "cf-tv-direct-index": {
+    "streams": [
+      {
+        "url": "http://x.invalid/bb/s01e02.1080p.mkv",
+        "quality": "1080p"
+      }
+    ],
+    "requests": [
+      "GET http://new.circleftp.net:5000/api/posts/7",
+      "GET http://new.circleftp.net:5000/api/posts?searchTerm=Breaking%20Bad&order=desc"
+    ]
+  },
+  "cf-tv-scan-fallback": {
+    "streams": [
+      {
+        "url": "http://x.invalid/bb/s01e02.720p.mkv",
+        "quality": "720p"
+      }
+    ],
+    "requests": [
+      "GET http://new.circleftp.net:5000/api/posts/8",
+      "GET http://new.circleftp.net:5000/api/posts?searchTerm=Breaking%20Bad&order=desc"
+    ]
+  },
+  "cf-no-match": {
+    "streams": [],
+    "requests": [
+      "GET http://new.circleftp.net:5000/api/posts?searchTerm=Totally%20Different%20Film&order=desc"
+    ]
+  },
+  "fh-movie-slug-fallback": {
+    "streams": [
+      {
+        "url": "https://cdn.invalid/stream/matrix.1080p.mp4",
+        "quality": "1080p"
+      },
+      {
+        "url": "https://cdn.invalid/dl/matrix.720p.mkv",
+        "quality": "720p"
+      }
+    ],
+    "requests": [
+      "GET https://flixhub.net/watch/movie/the-matrix",
+      "GET https://flixhub.net/watch/movie/the-matrix-1"
+    ]
+  },
+  "fh-tv-cards": {
+    "streams": [
+      {
+        "url": "https://cdn.invalid/stream/bb.s02e03.1080p.mp4",
+        "quality": "1080p"
+      }
+    ],
+    "requests": [
+      "GET https://flixhub.net/watch/episode/bb-s2-e3",
+      "GET https://flixhub.net/watch/series/breaking-bad",
+      "GET https://flixhub.net/watch/series/breaking-bad-1"
+    ]
+  },
+  "fh-tv-links-fallback": {
+    "streams": [
+      {
+        "url": "https://cdn.invalid/stream/bb.s01e02.720p.mp4",
+        "quality": "720p"
+      }
+    ],
+    "requests": [
+      "GET https://flixhub.net/watch/episode/bb-b",
+      "GET https://flixhub.net/watch/series/breaking-bad",
+      "GET https://flixhub.net/watch/series/breaking-bad-1"
+    ]
+  },
+  "fh-no-player-marker": {
+    "streams": [],
+    "requests": [
+      "GET https://flixhub.net/watch/movie/the-matrix",
+      "GET https://flixhub.net/watch/movie/the-matrix-1"
+    ]
+  }
+}

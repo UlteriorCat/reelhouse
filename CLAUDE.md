@@ -1,0 +1,116 @@
+# CLAUDE.md: working on Reelhouse
+
+Instructions for an AI coding session continuing this project. Read this fully before editing. Start with `HANDOFF.md` (two minutes), then this file, then only the parts of `docs/IMPLEMENTATION.md` your task needs (map below). Read `VERIFICATION.md` before running or changing tests.
+
+## What this project is
+
+**Reelhouse** is a streaming-style website (TMDB discovery, BDIX source lookup, built-in player, subtitles) hosted on **Cloudflare Pages** (`*.pages.dev`, https). It is a browser port of the "eclipsia-bdix" CloudStream plugin (GPL-3.0). Vanilla ES modules, no framework, no build step on Cloudflare. The owner is a Bangladeshi user whose media comes from BDIX-only servers; they browse mostly on a phone.
+
+## How to read `docs/IMPLEMENTATION.md`
+
+Do not read it end to end. Jump by task:
+
+| If your task is about... | Read section |
+|---|---|
+| Why something is built this way, requirements | 1 Goals |
+| How pieces connect, what runs where | 2 Architecture, 3 Technologies |
+| Home rows, TMDB, caching, images | 4 Data loading |
+| What happens on Play / Download, settle window, error classes | 5 Click-to-stream |
+| The BDIX scrapers, parity with the original, deliberate differences | 6 Providers |
+| CORS, mixed content, gateway, SSRF rules, why direct mode often fails | 7 Connectivity |
+| The player library, why ArtPlayer, how to swap | 8 Player choice |
+| Codec findings, ranking, health monitor, external players | 9 Playback robustness |
+| Subtitles, OpenSubtitles, appearance settings, shortcuts | 10 Subtitles |
+| Colours, fonts, layout, motion, accessibility | 11 UI and design |
+| Secrets, CSP, injection, SSRF | 12 Security |
+| What is tested | 13 Verification (full detail: `VERIFICATION.md`) |
+| Sizes, speed | 14 Performance |
+| What is unknown or untested | 15 Limitations |
+| Licensing, TMDB terms | 16 Licensing |
+| Recipes (add a provider, change player) | 17 Extending |
+
+## Important files
+
+| Area | Files | Notes |
+|---|---|---|
+| Identity | `public/js/brand.js`, `public/icon.svg`, `scripts/rebrand.mjs` | name, tagline, theme colour, logo; `npm run rebrand` syncs `index.html` and `manifest.webmanifest` |
+| Design | `public/css/app.css` | tokens in `:root` at the top; all layout and components; no other CSS |
+| Entry and routing | `public/index.html`, `public/js/main.js`, `public/js/router.js` | hash routes: `#/`, `#/search?q=`, `#/list`, `#/movie/ID`, `#/tv/ID?s=N`, `#/watch/movie/ID`, `#/watch/tv/ID/S/E` |
+| Views | `public/js/ui/home.js`, `details.js`, `watch.js`, `browse.js`, `settings.js`, `sources.js`, `shell.js`, `components.js` | each view receives its **own detached container** (`root`) and an abort `signal` |
+| Data | `public/js/api.js`, `store.js`, `util.js` | `api.js` = our `/api/*` client with cache and stale-while-revalidate; `store.js` = everything in `localStorage` (prefix `rh:`) |
+| BDIX | `public/js/providers/{df,cf,fh,common,index}.js`, `public/js/net.js` | providers = port of the scrapers; `net.js` = direct / gateway / edge transport |
+| Playback | `public/js/player.js`, `streams.js`, `subs.js` | `streams.js` ranks and predicts playability; `player.js` wraps ArtPlayer and monitors health; `subs.js` decodes and styles subtitles |
+| Server | `functions/api/[[path]].js` (entry), `lib/api.js` (router), `lib/tmdb.js`, `lib/subs.js` | all logic is in `lib/` and shared with the dev server and tests |
+| Gateway | `gateway/bdix-gateway.mjs` | optional proxy run on the user's network; zero dependencies |
+| Cloudflare config | `public/_headers` (CSP), `public/_routes.json`, `wrangler.toml` | `_routes.json` limits Functions to `/api/*` |
+| Vendor | `public/vendor/*` (committed), `scripts/build-vendor.mjs` | versioned file names; served `immutable`; rebuild with `npm run build:vendor` |
+| Tests | `test/*.test.mjs`, `test/fixtures/*`, `e2e/*` | see `VERIFICATION.md` |
+| Docs | `README.md`, `HANDOFF.md`, `CLAUDE.md`, `VERIFICATION.md`, `docs/IMPLEMENTATION.md`, `NOTICE.md` | `npm run check:docs` keeps them honest |
+
+## What controls the website design
+
+* **Colours, radii, spacing, breakpoints**: CSS variables at the top of `public/css/app.css` (`--ink --panel --raised --line --text --dim --lamp --mint ...`, `--pad`, `--card-w`, `--topbar-h`). Change tokens, not scattered values.
+* **Type**: Bricolage Grotesque (variable) from `public/vendor/fonts/`, declared at the top of `app.css`. Single family.
+* **Name, tagline, logo**: `public/js/brand.js` + `public/icon.svg`. The header logo, favicon and installed-app icon are all that one SVG. To rename: edit `brand.js`, run `npm run rebrand`, run `npm test` (a test fails if static files drift or a module hardcodes the name). Not renamed on purpose: the `rh:` storage prefix (renaming would erase users' saved data), the gateway's internal name, `package.json` name. `APP_NAME` (Function env) is the OpenSubtitles User-Agent and must match the consumer registered there.
+* **Layout per screen size**: media queries at 560, 768, 820, 1280, 1800 px in `app.css`; poster width is `--card-w` (viewport-relative). Phones get the bottom tab bar (`#tabbar`), larger screens the top nav.
+* **Look of the player**: ArtPlayer theme colour is set in `player.js` (`theme: '#ffb02e'`); extra rules at the end of `app.css` (`.art-*`).
+* **Design rules kept so far** (see IMPLEMENTATION section 11): one action colour (amber), mint only for status, no all-caps eyebrow labels, no dot-joined meta strings, motion only in response to a tap, only the recommended source ticket gets the primary button.
+
+## The video pipeline (fetch → rank → play → recover)
+
+1. **Trigger**: only the watch route (`ui/watch.js`) and the sources sheet (`ui/sources.js`) call `lookupSources()`. **Never query providers while browsing** (a browser test asserts zero BDIX requests until a click).
+2. **Lookup**: `providers/index.js: resolveStreams(meta, opts)` runs DhakaFlix (4 parallel POSTs), Circle FTP, FlixHub in parallel, each through `makeCtx` (counts network vs HTTP failures). `settleMs: 1500` on the watch page: once one provider has streams, stragglers are aborted and marked `slow`. Duplicate URLs keep the entry with the known resolution. Result states per provider: `ok, empty, error, unreachable, timeout, slow, cancelled`.
+3. **Transport** (`net.js`): gateway if a gateway URL is set; edge proxy (`/api/proxy`) for FlixHub; otherwise direct. `net.mediaUrl()` returns what goes into `<video>` or a download link.
+4. **Rank** (`streams.js`): `playability()` from file-name codec tokens and `browserCaps()`; `rank()` orders playable → risky → unlikely, then resolution, container (mp4 > mov > mkv), provider. The default source is the best one the browser can probably play.
+5. **Play** (`player.js`): ArtPlayer is imported lazily from `/vendor/` (hls.js only for `.m3u8`). The controller exposes `switchTo, addSubtitle, selectSubtitle, focus, applySubStyle, destroy`.
+6. **Health monitor**: after metadata `videoWidth === 0` → `video-unsupported`; after 2.5 s playing with no decoded audio → `audio-unsupported`; media error or 25 s without metadata → `error`/`timeout`. `watch.js: onIssue` auto-switches to the next non-bad source for video problems and shows a banner for silent audio.
+7. **Resume**: progress saved every 5 s, on `video:pause`, on destroy and on `pagehide` (`store.saveProgress`); resume only if past 30 s and before 93 %.
+8. **Subtitles**: `/api/subs` → `/api/sub` → `decodeBytes` → `srtToVtt` → blob URL → `art.subtitle.switch`. Appearance prefs in `settings.subStyle`.
+
+Facts to keep in mind: browsers play MOV and MKV (H.264/AAC) fine regardless of `Content-Type`; HEVC video and AC-3/DD+/DTS audio fail **silently**; never gate on `canPlayType` for MOV/MKV.
+
+## BDIX limitations (do not forget)
+
+* BDIX servers (`172.16.50.12/.14`, `new.circleftp.net:5000`, `15.1.1.50:5000`) are reachable only from a BDIX network. **Cloudflare cannot reach them**, so there is, and must be, no server-side BDIX code in the Function. FlixHub is public https, so the edge proxy may fetch it (allow-list `EDGE_PROXY_HOSTS`).
+* From an https page (`pages.dev` always is) browsers block http servers (mixed content), require CORS, and forbid setting `Referer`/`User-Agent`. Chrome/Edge 142+ prompt for permission for private **IP literals** only. Therefore **direct mode usually fails on pages.dev**, and the **gateway** (`gateway/bdix-gateway.mjs`, on the user's machine, ideally `http://127.0.0.1`, or with TLS) is the supported fix. The UI explains this (guidance notice, Settings → Test connection).
+* Real servers were never reachable during development; response shapes come from the original parsers. Anything that changes provider behaviour must keep parity with `test/fixtures/golden.json` or be a documented deviation.
+* The gateway forwards video through itself: keep it on the same BDIX network as the user's device; never recommend a public tunnel.
+
+## Rules for any change
+
+1. Do not query BDIX outside a user click. Do not add server-side BDIX code.
+2. No `innerHTML` with data; build DOM with `h()` (text goes through `textContent`).
+3. Each view writes only to the `root` it was given and must stop on `signal.aborted`; all network helpers must let `AbortError` propagate.
+4. Never put secrets in client code. Keys live in the Function environment; do not log or return them.
+5. Any new outbound fetch in `lib/` or the gateway needs an allow-list and tests, including bypass attempts (IP literals, IPv6 forms, look-alike hosts).
+6. Provider changes: keep the golden parity test green (compat mode) or document the deviation in IMPLEMENTATION section 6 and test it.
+7. Vendor files are versioned and `immutable`; changing them means new file names (`npm run build:vendor`) and updating `versions.json`.
+8. Keep `_headers` CSP strict: scripts from self only. Check the E2E run for CSP violations after UI changes.
+9. Accessibility floor: named controls, `alt` on images, visible focus, 44 px targets, reduced-motion support.
+10. GPL-3.0: provider modules derive from GPL code; keep `LICENSE` and `NOTICE.md`; TMDB attribution stays in the footer.
+11. After changing code or docs: `npm test`, the relevant `npm run e2e -- <word>`, and `npm run check:docs`. Before finishing a feature, run the full E2E and look at screenshots in `e2e/screenshots/`.
+
+## Definition of done
+
+A change is done when: behaviour is demonstrated by a test that fails without it (and you saw it fail); `npm test`, `npm run e2e`, `npm run smoke:cf` and `npm run check:docs` pass; UI changes were viewed in screenshots at phone and desktop sizes; docs and counts were updated; limitations you could not verify are stated plainly.
+
+## Sandbox lessons (details in VERIFICATION.md section 3)
+
+Only npm, PyPI, GitHub and Ubuntu mirrors are reachable (no TMDB, no BDIX); the shell is dash (no brace expansion, no `<(...)`: a syntax error silently skips the rest of the line, so confirm check output actually appeared); background processes do not survive between tool calls (use a Node orchestrator); never `pkill -f` a pattern present in your own command; kill orphaned `workerd` by name; `create_file` will not overwrite; the packaged Chromium has CORS disabled unless `e2e/lib.mjs` strips its flags (it does).
+
+## Useful commands
+
+```bash
+npm ci && npm test                         # install and run 70 unit/integration tests
+npm run dev                                # local site (needs TMDB_API_KEY in .dev.vars)
+npm run e2e:media && npm run e2e           # browser suite (needs ffmpeg; FFMPEG=... if not on PATH)
+npm run e2e -- subtitles                   # run only matching steps
+npm run smoke:cf                           # real Cloudflare runtime locally
+npm run build:vendor                       # rebuild player/font bundles
+npm run rebrand                            # sync name/theme after editing brand.js
+npm run check:docs                         # docs vs code
+```
+
+## Known gaps and good next steps
+
+Real-network validation on the owner's BDIX network; Firefox/Safari passes; a "gateway setup" page with a QR/copy-paste command; optional software decoding fallback (WebAssembly) for HEVC/DTS; episode list inside the watch page; Chromecast/AirPlay; per-title subtitle delay memory; migration to Video.js 10 if ArtPlayer stalls; a small cache for subtitle downloads to protect OpenSubtitles quota.

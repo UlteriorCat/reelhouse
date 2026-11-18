@@ -1,0 +1,32 @@
+{
+  "name": "reelhouse",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fast streaming-style web app: TMDB discovery, BDIX source lookup on demand, ArtPlayer playback, OpenSubtitles. Hosted on Cloudflare Pages.",
+  "scripts": {
+    "dev": "node dev/server.mjs",
+    "build:vendor": "node scripts/build-vendor.mjs",
+    "test": "node --test --test-reporter=spec \"test/*.test.mjs\"",
+    "e2e": "node e2e/run.mjs",
+    "gateway": "node gateway/bdix-gateway.mjs",
+    "deploy": "wrangler pages deploy public --project-name reelhouse",
+    "smoke:cf": "node e2e/cloudflare-smoke.mjs",
+    "e2e:media": "node e2e/make-media.mjs",
+    "rebrand": "node scripts/rebrand.mjs",
+    "check:docs": "node scripts/check-docs.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@fontsource-variable/bricolage-grotesque": "5.3.0",
+    "@sparticuz/chromium": "153.0.0",
+    "artplayer": "5.4.0",
+    "esbuild": "0.28.2",
+    "hls.js": "1.7.4",
+    "linkedom": "0.18.15",
+    "puppeteer-core": "25.17.0",
+    "wrangler": "4.160.0"
+  }
+}
