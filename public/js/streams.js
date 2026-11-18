@@ -3,7 +3,7 @@
 // both WITHOUT a media error. MOV/MKV with H.264+AAC play fine whatever Content-Type the server sends.
 import { sanitizeFilename } from './util.js';
 
-const PROVIDER_ORDER = { 'bdix-df': 0, 'bdix-cf': 1, 'bdix-fh': 2 };
+const PROVIDER_ORDER = { 'bdix-df': 0, 'bdix-cf': 1, 'bdix-fh': 2, fendrix: 3, hexion: 4 };
 const CONTAINER_SCORE = { mp4: 4, m4v: 4, mov: 3, webm: 3, m3u8: 3, mkv: 2, ts: 1, avi: 0, unknown: 1 };
 const LEVEL = { ok: 0, warn: 1, bad: 2 };
 

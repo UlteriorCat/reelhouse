@@ -5,7 +5,7 @@ export const DEFAULT_SETTINGS = {
   gatewayUrl: '',
   gatewayToken: '',
   edge: true, // fetch FlixHub through the Pages edge proxy when no gateway is set
-  providers: { 'bdix-df': true, 'bdix-cf': true, 'bdix-fh': true },
+  providers: { 'bdix-df': true, 'bdix-cf': true, 'bdix-fh': true, fendrix: true, hexion: true },
   compat: false, // true = only the file types the original extension accepted (mkv/mp4/avi)
   subLangs: ['en'],
   autoSubs: true,

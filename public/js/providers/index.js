@@ -2,8 +2,10 @@
 import * as df from './df.js';
 import * as cf from './cf.js';
 import * as fh from './fh.js';
+import * as fn from './fn.js';
+import * as hx from './hx.js';
 
-export const PROVIDERS = [df, cf, fh];
+export const PROVIDERS = [df, cf, fh, fn, hx];
 export const providerById = (id) => PROVIDERS.find((p) => p.id === id);
 
 /** Wraps the transport for one provider and counts what happened, so an empty result can be explained. */
