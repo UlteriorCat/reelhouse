@@ -28,7 +28,7 @@ Contents: [1 Goals](#1-goals-and-constraints) · [2 Architecture](#2-architectur
  ┌──────────────────────────────────────────────────┐             ┌──────────────────────────────────┐
  │ hash router ─► views (home, details, watch, ...) │  /api/...   │ lib/api.js  (router)             │
  │ store.js   (localStorage: settings, history,     │────────────►│  ├ lib/tmdb.js   TMDB (key stays  │──► api.themoviedb.org
- │             progress, My List)                   │             │  │   server-side, edge-cached)    │
+ │             progress, lists, account sync)       │             │  │   server-side, edge-cached)    │
  │ providers/ (DhakaFlix, Circle FTP, FlixHub,      │             │  ├ lib/subs.js   OpenSubtitles /  │──► opensubtitles.com
  │   Fendrix ─► enc-dec.app, api.wing.st, CDN;      │             │  │   Stremio addon, SSRF-guarded  │──► opensubtitles-v3.strem.io
  │   Hexion via /api/proxy)                         │             │  │                                │

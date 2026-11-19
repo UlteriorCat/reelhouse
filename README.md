@@ -1,12 +1,13 @@
 # Reelhouse
 
-A fast, streaming-style website for browsing what is trending (TMDB) and playing or downloading titles from **BDIX sources**, hosted on **Cloudflare Pages**. Phone, tablet and desktop layouts; no framework; about 37 KB of gzipped app JavaScript; the video player loads only when you press Play.
+A fast, streaming-style website for browsing what is trending (TMDB) and playing or downloading titles from **BDIX sources**, hosted on **Cloudflare Pages**. Phone, tablet and desktop layouts; no framework; about 167 KB of app JavaScript on the home page (uncompressed); the video player loads only when you press Play.
 
 | | |
 |---|---|
-| Discovery | Trending, popular, top-rated rows, search, "Because you watched", Continue watching, My List (TMDB, free key) |
+| Discovery | Trending, popular, top-rated rows, search, "Because you watched", Continue watching and History (remove single titles, with Undo), named watch lists (TMDB, free key) |
+| Accounts (optional) | Invite-only sign-up, sign-in, password change; history, lists, resume positions and settings sync across devices; admin page for invite codes and users |
 | Details | Movie / series pages, seasons and episodes, cast, recommendations, trailer link |
-| Streaming | BDIX servers are queried **only when you press Play or Download**, never while browsing |
+| Streaming | BDIX servers (DhakaFlix, Circle FTP) and online sources (FlixHub, Fendrix, Hexion) are queried **only when you press Play or Download**, never while browsing |
 | Player | ArtPlayer: MP4, MOV, MKV, WebM, HLS; resume; next episode; source switching; keyboard shortcuts |
 | Subtitles | OpenSubtitles search (official API or keyless fallback), upload your own; size, height, colour and background are adjustable |
 | Download | Separate button on the movie page and on every episode; ranked list of sources with copy-link, VLC/MX/Infuse links and an `.m3u` playlist |
@@ -101,9 +102,11 @@ Notes
 
 Without this the site works as before: history and lists live on each device. With it, people sign in (accounts need an **invite code** from you) and their history, lists, resume positions and playback settings follow them to every device.
 
-1. Create the database (once): `npx wrangler d1 create reelhouse-accounts`.
-2. Cloudflare dashboard → your Pages project → *Settings → Bindings* → add a **D1 database** binding named **`DB`** pointing at `reelhouse-accounts`. The tables are created automatically on first use.
-3. *Settings → Variables and Secrets*: add **`ADMIN_USERNAME`** (plain text, e.g. `admin`) and **`ADMIN_PASSWORD`** (as a **secret**, at least 10 characters; a long random one). Or from a terminal: `npx wrangler pages secret put ADMIN_PASSWORD --project-name reelhouse`.
+1. Create the database (once): `npx wrangler d1 create reelhouse-accounts`. It prints a `database_id`.
+2. In `wrangler.toml`, un-comment the `[[d1_databases]]` block and paste that `database_id`, then commit. (This project has a `wrangler.toml`, which Cloudflare treats as the source of truth for the Pages project's bindings, so bind the database there rather than only in the dashboard.) The tables are created automatically on first use.
+3. Add two **secrets** (dashboard *Settings → Variables and Secrets*, or the terminal): **`ADMIN_USERNAME`** (e.g. `admin`) and **`ADMIN_PASSWORD`** (at least 10 characters; a long random one):
+   `npx wrangler pages secret put ADMIN_USERNAME --project-name reelhouse`
+   `npx wrangler pages secret put ADMIN_PASSWORD --project-name reelhouse`
 4. Redeploy, open the site, *Settings → Account → Sign in* with those two values: that first sign-in creates the admin account. Then *Change password* there if you like; after the first sign-in the secret is no longer used to sign in (the database is).
 5. *Settings → Account → Admin*: generate invite codes (one person or several, with an expiry), send them; see who joined; reset a forgotten password (gives you a temporary one to pass on); remove users; disable codes.
 

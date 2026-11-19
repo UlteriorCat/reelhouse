@@ -62,6 +62,7 @@ Sandbox reminders (details: `VERIFICATION.md` section 3): only npm/PyPI/GitHub/U
 ## Deploy and customise (owner tasks)
 
 * Deploy: Cloudflare Pages, build command empty, output directory `public`, secret `TMDB_API_KEY` (README). Run the gateway on a BDIX machine and set `ALLOWED_ORIGINS=https://<project>.pages.dev`.
+* Accounts (optional): create a D1 database, bind it as `DB` in `wrangler.toml` (commented block there), add secrets `ADMIN_USERNAME` / `ADMIN_PASSWORD`, redeploy, sign in once to create the admin (README *Accounts*).
 * Rename / new logo: edit `public/js/brand.js` and replace `public/icon.svg`, then `npm run rebrand` and `npm test` (README section "Change the name or logo").
 
 ## Open items
