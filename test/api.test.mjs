@@ -100,7 +100,7 @@ test('subs: OpenSubtitles params are lowercase + sorted; tv uses parent_tmdb_id'
   const { body } = await get('/api/subs?type=tv&tmdb=1396&season=1&episode=2&lang=EN,bn', { TMDB_API_KEY: KEY, OPENSUBTITLES_API_KEY: 'osk' }, up);
   const call = up.calls.find((c) => c.url.pathname === '/api/v1/subtitles');
   assert.equal(call.url.search, '?episode_number=2&languages=en%2Cbn&order_by=download_count&order_direction=desc&parent_tmdb_id=1396&season_number=1');
-  assert.equal(call.init.headers['Api-Key'], 'osk'); assert.match(call.init.headers['User-Agent'], /Reelhouse/);
+  assert.equal(call.init.headers['Api-Key'], 'osk'); assert.match(call.init.headers['User-Agent'], /Raflix/);
   assert.deepEqual(body.items, [{ id: 'os:77', provider: 'opensubtitles', lang: 'en', name: 'Rel.1', downloads: 9, hi: true }]);
 });
 
@@ -142,8 +142,8 @@ test('edge proxy: allowlisted https hosts only', async () => {
   }
 });
 
-test('APP_NAME sets the OpenSubtitles User-Agent (must match your registered consumer); default is Reelhouse', async () => {
-  for (const [env, want] of [[{ TMDB_API_KEY: KEY, OPENSUBTITLES_API_KEY: 'k' }, 'Reelhouse v1.0'], [{ TMDB_API_KEY: KEY, OPENSUBTITLES_API_KEY: 'k', APP_NAME: 'MyCinema' }, 'MyCinema v1.0']]) {
+test('APP_NAME sets the OpenSubtitles User-Agent (must match your registered consumer); default is Raflix', async () => {
+  for (const [env, want] of [[{ TMDB_API_KEY: KEY, OPENSUBTITLES_API_KEY: 'k' }, 'Raflix v1.0'], [{ TMDB_API_KEY: KEY, OPENSUBTITLES_API_KEY: 'k', APP_NAME: 'MyCinema' }, 'MyCinema v1.0']]) {
     const up = upstream({ '/api/v1/subtitles': (u, i, r) => r({ data: [] }) });
     await get('/api/subs?type=movie&tmdb=603&lang=en', env, up);
     assert.equal(up.calls.find((c) => c.url.pathname === '/api/v1/subtitles').init.headers['User-Agent'], want);

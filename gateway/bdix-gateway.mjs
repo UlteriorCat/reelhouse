@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Reelhouse BDIX gateway: run it on a machine that can reach your BDIX servers (your PC, a Raspberry Pi, a VPS in Bangladesh).
+// Raflix BDIX gateway: run it on a machine that can reach your BDIX servers (your PC, a Raspberry Pi, a VPS in Bangladesh).
 // It fixes the four things a browser cannot do by itself: set Referer/User-Agent, get CORS headers from servers that
 // do not send them, avoid HTTPS->HTTP mixed content (when served from localhost or with TLS), and force real downloads.
 //
@@ -232,7 +232,7 @@ export function createGateway(userCfg = {}) {
         if (req.headers['access-control-request-private-network']) h['access-control-allow-private-network'] = 'true';
         res.writeHead(204, h); return res.end();
       }
-      if (url.pathname === '/health') return sendJson(req, res, 200, { ok: true, name: 'reelhouse-gateway', auth: !!cfg.token });
+      if (url.pathname === '/health') return sendJson(req, res, 200, { ok: true, name: 'raflix-gateway', auth: !!cfg.token });
       if (!authed(req, url)) return sendJson(req, res, 401, { error: 'unauthorized' });
 
       if (url.pathname === '/p' && req.method === 'POST') {
@@ -299,7 +299,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   let server;
   try { server = createGateway(cfg); } catch (e) { console.error(e.message); process.exit(1); }
   server.listen(cfg.port, cfg.host, () => {
-    console.log(`Reelhouse gateway listening on ${cfg.tls ? 'https' : 'http'}://${cfg.host}:${cfg.port}`);
+    console.log(`Raflix gateway listening on ${cfg.tls ? 'https' : 'http'}://${cfg.host}:${cfg.port}`);
     console.log(`  auth token : ${cfg.token ? 'required' : 'none (loopback only)'}`);
     console.log(`  allow-list : private hosts ${[...cfg.allowPrivate].join(', ') || '(none)'}`);
     console.log(`  origins    : ${cfg.origins.join(', ') || '* (any)'}`);

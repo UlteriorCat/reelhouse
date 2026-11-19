@@ -1,4 +1,4 @@
-name = "reelhouse"
+name = "raflix"
 compatibility_date = "2025-09-01"
 pages_build_output_dir = "public"
 
@@ -6,10 +6,10 @@ pages_build_output_dir = "public"
 # or locally in .dev.vars (see .dev.vars.example):
 #   TMDB_API_KEY, OPENSUBTITLES_API_KEY (optional), OPENSUBTITLES_USERNAME / OPENSUBTITLES_PASSWORD (optional)
 
-# Accounts (optional): create the database with `npx wrangler d1 create reelhouse-accounts`, paste its id below and
+# Accounts (optional): create the database with `npx wrangler d1 create raflix-accounts`, paste its id below and
 # un-comment. Without this binding the site works with device-only history and lists. Secrets ADMIN_USERNAME and
 # ADMIN_PASSWORD create the first admin (README, "Accounts").
 # [[d1_databases]]
 # binding = "DB"
-# database_name = "reelhouse-accounts"
+# database_name = "raflix-accounts"
 # database_id = "paste-the-id-printed-by-wrangler-d1-create"

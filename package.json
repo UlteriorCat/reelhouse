@@ -1,5 +1,5 @@
 {
-  "name": "reelhouse",
+  "name": "raflix",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "test": "node --test --test-reporter=spec \"test/*.test.mjs\"",
     "e2e": "node e2e/run.mjs",
     "gateway": "node gateway/bdix-gateway.mjs",
-    "deploy": "wrangler pages deploy public --project-name reelhouse",
+    "deploy": "wrangler pages deploy public --project-name raflix",
     "smoke:cf": "node e2e/cloudflare-smoke.mjs",
     "e2e:media": "node e2e/make-media.mjs",
     "rebrand": "node scripts/rebrand.mjs",

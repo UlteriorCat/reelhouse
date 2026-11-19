@@ -1,6 +1,6 @@
 # Verification record
 
-Everything that was done to test and verify Reelhouse, how, with which packages, what it found, and how to repeat or extend it. Read this before running, changing or adding tests. Design and architecture are in `docs/IMPLEMENTATION.md`; the quick start is in `HANDOFF.md`.
+Everything that was done to test and verify Raflix, how, with which packages, what it found, and how to repeat or extend it. Read this before running, changing or adding tests. Design and architecture are in `docs/IMPLEMENTATION.md`; the quick start is in `HANDOFF.md`.
 
 Contents: [1 Principles](#1-principles) · [2 Environment and packages](#2-environment-and-packages) · [3 Sandbox lessons](#3-sandbox-lessons-learned-so-the-next-session-does-not-repeat-them) · [4 Test layers](#4-test-layers) · [5 Unit and integration tests](#5-unit-and-integration-tests) · [6 Golden parity](#6-golden-parity-with-the-original-scrapers) · [7 Browser end-to-end](#7-browser-end-to-end-suite) · [8 Cloudflare runtime](#8-cloudflare-runtime-smoke-test) · [9 Experiments](#9-experiments-that-are-not-tests) · [10 Mutation checks](#10-mutation-checks) · [11 Stress runs](#11-stress-runs) · [12 Bug log](#12-bug-log) · [13 Results](#13-latest-results) · [14 Not verified](#14-not-verified-and-how-to-verify-it-yourself) · [15 Reproduce](#15-reproduce-from-scratch) · [16 Adding tests](#16-adding-or-changing-tests) · [17 Phase 1: scraping reference](#17-phase-1-verification-of-the-scraping-reference)
 
@@ -281,7 +281,7 @@ Measured on the home page (desktop, local server, printed by E2E step 22): 72 re
 ## 15. Reproduce from scratch
 
 ```bash
-unzip reelhouse.zip && cd reelhouse
+unzip raflix.zip && cd raflix
 npm ci                                              # Node 22+
 npm test                                            # 70 tests
 npm run build:vendor && git diff --stat public/vendor   # (or compare to the zip) bundles must be identical

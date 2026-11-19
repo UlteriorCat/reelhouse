@@ -1,10 +1,10 @@
-# CLAUDE.md: working on Reelhouse
+# CLAUDE.md: working on Raflix
 
 Instructions for an AI coding session continuing this project. Read this fully before editing. Start with `HANDOFF.md` (two minutes), then this file, then only the parts of `docs/IMPLEMENTATION.md` your task needs (map below). Read `VERIFICATION.md` before running or changing tests.
 
 ## What this project is
 
-**Reelhouse** is a streaming-style website (TMDB discovery, BDIX source lookup, built-in player, subtitles) hosted on **Cloudflare Pages** (`*.pages.dev`, https). It is a browser port of the "eclipsia-bdix" CloudStream plugin (GPL-3.0). Vanilla ES modules, no framework, no build step on Cloudflare. The owner is a Bangladeshi user whose media comes from BDIX-only servers; they browse mostly on a phone.
+**Raflix** is a streaming-style website (TMDB discovery, BDIX source lookup, built-in player, subtitles) hosted on **Cloudflare Pages** (`*.pages.dev`, https). It is a browser port of the "eclipsia-bdix" CloudStream plugin (GPL-3.0). Vanilla ES modules, no framework, no build step on Cloudflare. The owner is a Bangladeshi user whose media comes from BDIX-only servers; they browse mostly on a phone.
 
 ## How to read `docs/IMPLEMENTATION.md`
 
