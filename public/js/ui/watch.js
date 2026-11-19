@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { store } from '../store.js';
 import { net, caps } from '../core.js';
 import { createPlayer } from '../player.js';
-import { fetchSubtitleList, loadSubtitleBlob, vttBlobUrl, decodeBytes, langName, SUB_LANGS } from '../subs.js';
+import { fetchSubtitleList, loadSubtitleBlob, loadSourceSubtitle, vttBlobUrl, decodeBytes, langName, SUB_LANGS } from '../subs.js';
 import { icon, openSheet, toast } from './components.js';
 import { lookupSources, providerChips, guidance, openSources } from './sources.js';
 import { hrefWatch, hrefTitle } from '../router.js';
@@ -100,7 +100,14 @@ export function watchView({ root, route, signal }) {
       const f = file.files[0]; if (!f) return;
       try { const url = vttBlobUrl(decodeBytes(await f.arrayBuffer())); await addSubtitleFromBlob(url, f.name, 'file:' + f.name, 'File'); toast('Subtitles loaded'); sheet.close(); } catch (err) { toast(err.message, { error: true }); }
     });
-    mount(sheet.body, h('div', { class: 'stack' }, h('div', { class: 'row' }, langSel, h('button', { class: 'btn primary', type: 'button', onClick: search }, 'Search')), h('label', { class: 'btn ghost', for: 'subfile', tabindex: '0' }, 'Use a file from this device (.srt, .vtt)'), file), out);
+    // subtitles delivered with the source that is playing (Fendrix sends captions with its streams)
+    const fromSource = (player && player.stream && player.stream.subtitles) || [];
+    const sourceList = fromSource.length ? h('div', { class: 'stack', 'aria-label': 'Subtitles from this source' }, h('h3', null, 'From this source'),
+      fromSource.map((it) => h('button', { class: 'btn', type: 'button', style: { justifyContent: 'space-between', textAlign: 'left' }, onClick: async (e) => {
+        const b = e.currentTarget; b.disabled = true;
+        try { const url = await loadSourceSubtitle(it.url, signal); await addSubtitleFromBlob(url, `${it.label} (source)`, 'src:' + it.url, it.label); toast('Subtitles loaded'); sheet.close(); } catch (err) { if (!signal.aborted) toast(err.message, { error: true }); b.disabled = false; }
+      } }, h('span', null, it.label), h('small', { style: { color: 'var(--faint)' } }, player.stream.providerName)))) : null;
+    mount(sheet.body, sourceList, h('div', { class: 'stack' }, h('div', { class: 'row' }, langSel, h('button', { class: 'btn primary', type: 'button', onClick: search }, 'Search')), h('label', { class: 'btn ghost', for: 'subfile', tabindex: '0' }, 'Use a file from this device (.srt, .vtt)'), file), out);
     search();
   }
 
@@ -118,7 +125,7 @@ export function watchView({ root, route, signal }) {
   function openSourcesSheet() {
     openSources({ meta: metaFor(), title: displayTitle(), mode: 'play', selectedId: player ? player.stream.id : undefined, onPlay: (st) => { mount(banners); player ? player.switchTo(st) : startPlayer(st); } });
   }
-  const metaFor = () => ({ type, tmdbId: id, title: d.title, year: d.year, season, episode });
+  const metaFor = () => ({ type, tmdbId: id, title: d.title, year: d.year, imdbId: d.imdbId || '', season, episode });
   const displayTitle = () => d.title + (type === 'tv' ? ` S${season}E${episode}` : d.year ? ` (${d.year})` : '');
 
   // ---------------- start ----------------

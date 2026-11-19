@@ -13,7 +13,7 @@ test('store: settings defaults, deep merge, reset, corrupt data falls back', () 
   assert.deepEqual(st.settings(), DEFAULT_SETTINGS);
   st.saveSettings({ gatewayUrl: 'http://127.0.0.1:8787', providers: { 'bdix-fh': false }, subStyle: { size: 130 } });
   const s = st.settings();
-  assert.equal(s.gatewayUrl, 'http://127.0.0.1:8787'); assert.deepEqual(s.providers, { 'bdix-df': true, 'bdix-cf': true, 'bdix-fh': false });
+  assert.equal(s.gatewayUrl, 'http://127.0.0.1:8787'); assert.deepEqual(s.providers, { 'bdix-df': true, 'bdix-cf': true, 'bdix-fh': false, fendrix: true, hexion: true }, 'deep merge keeps the other defaults');
   assert.deepEqual(s.subStyle, { size: 130, color: '#ffffff', bg: 'shadow', bottom: 6 });
   const bad = mem(); bad.setItem('rh:settings', '{not json'); assert.deepEqual(createStore(bad).settings(), DEFAULT_SETTINGS);
   st.resetSettings(); assert.deepEqual(st.settings(), DEFAULT_SETTINGS);
@@ -54,12 +54,45 @@ test('store: clear history / progress', () => {
   assert.deepEqual(st.history(), []); assert.equal(st.progress('movie:1'), null);
 });
 
-test('store: My List toggle + change notifications', () => {
+test('store: lists (add, remove, create, rename, delete) + change notifications', () => {
   const st = createStore(mem()); let n = 0; const off = st.onChange(() => n++);
-  assert.equal(st.toggleList({ type: 'movie', id: 5, title: 'X', year: '2020', poster: '/p', rating: 7 }), true);
-  assert.equal(st.inList('movie', 5), true); assert.equal(st.inList('tv', 5), false);
-  assert.equal(st.toggleList({ type: 'movie', id: 5, title: 'X' }), false); assert.equal(st.list().length, 0);
-  assert.equal(n, 2); off(); st.toggleList({ type: 'movie', id: 6, title: 'Y' }); assert.equal(n, 2);
+  assert.deepEqual(st.lists().map((l) => [l.id, l.name, l.items.length]), [['default', 'My List', 0]], 'My List always exists');
+  st.addToList('default', { type: 'movie', id: 5, title: 'X', year: '2020', poster: '/p', rating: 7 });
+  assert.equal(st.inAnyList('movie', 5), true); assert.equal(st.inAnyList('tv', 5), false);
+  const id = st.createList('  Weekend  ');
+  assert.equal(st.lists()[1].name, 'Weekend', 'trimmed; listed after My List');
+  st.addToList(id, { type: 'tv', id: 9, title: 'Show' });
+  assert.deepEqual(st.listsWith('tv', 9), [id]);
+  assert.throws(() => st.createList('weekend'), /already exists/, 'names are unique, case-insensitive');
+  assert.throws(() => st.createList('   '), /name/);
+  assert.throws(() => st.renameList(id, 'MY LIST'), /already exists/);
+  st.renameList(id, 'Later');
+  assert.equal(st.lists()[1].name, 'Later');
+  assert.equal(st.removeFromList('default', 'movie', 5).title, 'X', 'returns the removed item (for Undo)');
+  assert.equal(st.inAnyList('movie', 5), false);
+  assert.throws(() => st.deleteList('default'), /cannot be deleted/);
+  st.deleteList(id); assert.equal(st.lists().length, 1);
+  assert.equal(n, 6); off(); st.addToList('default', { type: 'movie', id: 6, title: 'Y' }); assert.equal(n, 6);
+});
+
+test('store: history remove/undo/clear leave tombstones; old single "My List" is migrated', () => {
+  const m = mem();
+  m.setItem('rh:history', JSON.stringify([{ type: 'movie', id: 1, title: 'A', ts: 10 }, { type: 'tv', id: 2, title: 'B', season: 1, episode: 3, ts: 5 }]));
+  m.setItem('rh:list', JSON.stringify([{ type: 'movie', id: 7, title: 'Newest' }, { type: 'movie', id: 8, title: 'Older' }]));
+  let t = 1000;
+  const st = createStore(m, { now: () => t });
+  assert.deepEqual(st.history().map((h) => h.id), [1, 2], 'legacy history kept, newest first');
+  assert.deepEqual(st.lists()[0].items.map((i) => i.title), ['Newest', 'Older'], 'legacy My List kept in order');
+  const removed = st.removeHistory('movie', 1);
+  assert.deepEqual(st.history().map((h) => h.id), [2]);
+  assert.ok(st.exportDoc().historyDel['movie:1'] > 0, 'a tombstone records the removal');
+  st.restoreHistory(removed);
+  assert.deepEqual(st.history().map((h) => h.id), [1, 2], 'undo puts it back at the front');
+  assert.equal(st.exportDoc().historyDel['movie:1'], undefined);
+  st.pushHistory({ type: 'movie', id: 1, title: 'A' }); st.removeHistory('movie', 1); // same millisecond: remove still wins
+  assert.equal(st.history().some((h) => h.id === 1), false);
+  st.clearHistory(); assert.equal(st.history().length, 0);
+  assert.ok(st.exportDoc().historyDel['tv:2'] > 0);
 });
 
 const caps = (o = {}) => ({ hevc: false, av1: false, vp9: true, ac3: false, eac3: false, mkv: true, platform: 'desktop', ...o });

@@ -1,12 +1,13 @@
 # Reelhouse
 
-A fast, streaming-style website for browsing what is trending (TMDB) and playing or downloading titles from **BDIX sources**, hosted on **Cloudflare Pages**. Phone, tablet and desktop layouts; no framework; about 37 KB of gzipped app JavaScript; the video player loads only when you press Play.
+A fast, streaming-style website for browsing what is trending (TMDB) and playing or downloading titles from **BDIX sources**, hosted on **Cloudflare Pages**. Phone, tablet and desktop layouts; no framework; about 167 KB of app JavaScript on the home page (uncompressed); the video player loads only when you press Play.
 
 | | |
 |---|---|
-| Discovery | Trending, popular, top-rated rows, search, "Because you watched", Continue watching, My List (TMDB, free key) |
+| Discovery | Trending, popular, top-rated rows, search, "Because you watched", Continue watching and History (remove single titles, with Undo), named watch lists (TMDB, free key) |
+| Accounts (optional) | Invite-only sign-up, sign-in, password change; history, lists, resume positions and settings sync across devices; admin page for invite codes and users |
 | Details | Movie / series pages, seasons and episodes, cast, recommendations, trailer link |
-| Streaming | BDIX servers are queried **only when you press Play or Download**, never while browsing |
+| Streaming | BDIX servers (DhakaFlix, Circle FTP) and online sources (FlixHub, Fendrix, Hexion) are queried **only when you press Play or Download**, never while browsing |
 | Player | ArtPlayer: MP4, MOV, MKV, WebM, HLS; resume; next episode; source switching; keyboard shortcuts |
 | Subtitles | OpenSubtitles search (official API or keyless fallback), upload your own; size, height, colour and background are adjustable |
 | Download | Separate button on the movie page and on every episode; ranked list of sources with copy-link, VLC/MX/Infuse links and an `.m3u` playlist |
@@ -42,8 +43,10 @@ So there are three connection modes (Settings → Connection):
 | Mode | When it works | Setup |
 |---|---|---|
 | **Direct** (default) | The BDIX server sends CORS headers and the browser allows the request. Chrome/Edge 142+ ask for "local network" permission for private IPs such as `172.16.x.x`; Firefox and Safari block http from https. Public-looking hosts (`new.circleftp.net:5000`, `15.1.1.50`) are blocked from an https page. | none |
-| **Edge proxy** (automatic for FlixHub) | FlixHub is a public https site; the Pages Function fetches it for you. Only hosts in `EDGE_PROXY_HOSTS` are allowed. | none |
+| **Edge proxy** (automatic for FlixHub and Hexion) | Public https sites without CORS; the Pages Function fetches the pages for you. Only the exact hosts in `EDGE_PROXY_HOSTS` are allowed (default in `lib/api.js`: FlixHub and the Hexion/4kHdHub link chain). | none; if Hexion starts showing "server error", its link domains moved: add the new ones to `EDGE_PROXY_HOSTS` |
 | **Gateway** (recommended for BDIX) | Always, if the machine running it is on BDIX. Sets `Referer`/`User-Agent`, adds CORS, streams video with Range support, forces real downloads. | run `node gateway/bdix-gateway.mjs` (below) |
+
+**Online sources (no BDIX needed).** *Fendrix* (Cinejoy/Shegu) is called straight from your browser, never through the gateway; its videos are HLS from a server that refuses in-page players, so they play in browsers with built-in HLS (Chrome/Edge 142+, Safari, iPhone/iPad); in browsers without it (Firefox) they play **when a gateway is set** (the gateway fetches the video and rewrites its playlists), otherwise in an external player (VLC, MX Player via the source's *More* menu). *Hexion* (4kHdHub) is looked up through the edge proxy (or your gateway); its files are large releases, often with Dolby (DD+/DTS) audio that browsers play silently: the app warns and offers the external players. Both can be switched off in Settings → Sources.
 
 The app tells you which situation you are in: **Settings → Test connection** reports each host as *reachable*, *reachable but blocked by CORS*, *unreachable*, *gateway token rejected* or *blocked by the gateway*.
 
@@ -94,6 +97,22 @@ Notes
 * `public/_routes.json` limits Functions to `/api/*`, so static files are served without counting against the Functions quota (free plan: 100,000 Function requests/day, 10 ms CPU each). Responses are edge-cached, so normal browsing uses very few.
 * The site uses hash routes (`/#/movie/603`), so it needs no SPA fallback rules.
 * **https vs http:** a `*.pages.dev` site is always https. If you want direct (non-gateway) access to plain-http BDIX servers, attach a custom domain and disable "Always Use HTTPS" for it, or use the gateway.
+
+### Accounts (optional): sign-in, sync, invite codes
+
+Without this the site works as before: history and lists live on each device. With it, people sign in (accounts need an **invite code** from you) and their history, lists, resume positions and playback settings follow them to every device.
+
+1. Create the database (once): `npx wrangler d1 create reelhouse-accounts`. It prints a `database_id`.
+2. In `wrangler.toml`, un-comment the `[[d1_databases]]` block and paste that `database_id`, then commit. (This project has a `wrangler.toml`, which Cloudflare treats as the source of truth for the Pages project's bindings, so bind the database there rather than only in the dashboard.) The tables are created automatically on first use.
+3. Add two **secrets** (dashboard *Settings → Variables and Secrets*, or the terminal): **`ADMIN_USERNAME`** (e.g. `admin`) and **`ADMIN_PASSWORD`** (at least 10 characters; a long random one):
+   `npx wrangler pages secret put ADMIN_USERNAME --project-name reelhouse`
+   `npx wrangler pages secret put ADMIN_PASSWORD --project-name reelhouse`
+4. Redeploy, open the site, *Settings → Account → Sign in* with those two values: that first sign-in creates the admin account. Then *Change password* there if you like; after the first sign-in the secret is no longer used to sign in (the database is).
+5. *Settings → Account → Admin*: generate invite codes (one person or several, with an expiry), send them; see who joined; reset a forgotten password (gives you a temporary one to pass on); remove users; disable codes.
+
+Security notes: passwords are hashed (PBKDF2-SHA256, 100 000 iterations by default, set `PBKDF2_ITERATIONS` to change), sessions are HttpOnly cookies, failed sign-ins are rate limited, invite codes are stored hashed and shown once. On the Workers **free plan** one hash at 100 000 iterations takes about 14 ms of CPU (measured on the build machine) against a 10 ms limit; if sign-in fails with a Cloudflare "exceeded CPU" error, set `PBKDF2_ITERATIONS=50000` (existing passwords keep working: each hash stores its own count).
+
+Locally: `npm run dev` uses a SQLite file in `.wrangler/` as the database and reads `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.dev.vars`.
 
 ### Using the site on `pages.dev` (https)
 
@@ -149,10 +168,10 @@ Traffic caveat: through the gateway, video flows *server → gateway → your de
 | Command | What it does |
 |---|---|
 | `npm run dev` | Local server (static + API + `_headers`) |
-| `npm test` | 70 unit and integration tests (server layer, gateway, providers vs. golden output, client logic, router, API client, branding) |
+| `npm test` | 127 unit and integration tests (server layer, gateway, providers vs. golden output, client logic, router, API client, branding) |
 | `npm run e2e:media` | Generates the small test videos (needs `ffmpeg`) |
-| `npm run e2e` | 25 browser end-to-end steps in headless Chromium (real gateway, mock BDIX server, real videos). Add a word to run matching steps only: `npm run e2e -- subtitles` |
-| `npm run smoke:cf` | Runs the real Cloudflare runtime (`wrangler pages dev` / workerd) against a mock TMDB: 8 Cloudflare runtime checks of the Function, routing and headers |
+| `npm run e2e` | 35 browser end-to-end steps in headless Chromium (real gateway, mock BDIX server, real videos). Add a word to run matching steps only: `npm run e2e -- subtitles` |
+| `npm run smoke:cf` | Runs the real Cloudflare runtime (`wrangler pages dev` / workerd) against a mock TMDB: 9 Cloudflare runtime checks of the Function, routing and headers |
 | `npm run rebrand` | Syncs `index.html` and the web manifest with `public/js/brand.js` after you change the name or colour |
 | `npm run check:docs` | Checks that the documentation still matches the code (paths, scripts, counts, versions, env vars) |
 | `EXT_REPO=/path/to/cloudstream node scripts/make-golden.mjs` | Regenerates `test/fixtures/golden.json` by running the *original* CloudStream scrapers (only needed if you change a provider on purpose) |
@@ -166,7 +185,7 @@ The E2E run launches Chromium from the `@sparticuz/chromium` package with its se
 
 ```
 public/            deployed as-is: index.html, css/, js/ (ES modules), vendor/ (player, font)
-  js/providers/    browser port of the three BDIX scrapers (+ shared parsing)
+  js/providers/    browser port of the eclipsia scrapers: DhakaFlix, Circle FTP, FlixHub, Fendrix, Hexion (+ shared parsing)
   js/ui/           views: home, details, watch, sources sheet, settings, browse
 functions/api/     the single Pages Function: all of /api/*
 lib/               API router, TMDB client, subtitle service (shared by Function, dev server, tests)

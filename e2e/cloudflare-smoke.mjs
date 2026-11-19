@@ -1,3 +1,6 @@
+import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs';
 // Runs the REAL Cloudflare Pages runtime locally (wrangler -> workerd) and checks the Function, routing and headers.
 // The Function's TMDB base URL is pointed at a local mock, so no internet or API key is needed.   npm run smoke:cf
 import http from 'node:http';
@@ -18,7 +21,9 @@ const mockSrv = http.createServer(async (req, res) => {
   res.end(Buffer.from(await r.arrayBuffer()));
 }).listen(MOCK_PORT, '127.0.0.1');
 
-const wr = spawn('npx', ['wrangler', 'pages', 'dev', 'public', '--port', String(CF_PORT), '--ip', '127.0.0.1', '--binding', `TMDB_API_KEY=${KEY}`, `TMDB_API_BASE=http://127.0.0.1:${MOCK_PORT}/3`, '--log-level=warn'], { cwd: new URL('..', import.meta.url).pathname, stdio: ['ignore', 'pipe', 'pipe'] });
+// a throw-away local D1 database for the account checks
+const persistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rh-d1-'));
+const wr = spawn('npx', ['wrangler', 'pages', 'dev', 'public', '--port', String(CF_PORT), '--ip', '127.0.0.1', '--binding', `TMDB_API_KEY=${KEY}`, `TMDB_API_BASE=http://127.0.0.1:${MOCK_PORT}/3`, '--binding', 'ADMIN_USERNAME=owner', '--binding', 'ADMIN_PASSWORD=smoke admin passphrase', '--d1', 'DB', '--persist-to', persistDir, '--log-level=warn'], { cwd: new URL('..', import.meta.url).pathname, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = '';
 wr.stdout.on('data', (d) => { logs += d; }); wr.stderr.on('data', (d) => { logs += d; });
 const B = `http://127.0.0.1:${CF_PORT}`;
@@ -84,10 +89,32 @@ try {
       const r = await get('/api/proxy?u=' + encodeURIComponent(u)); assert.ok([400, 403].includes(r.status), `${u} -> ${r.status}`);
     }
   });
+  await t('accounts in workerd + local D1: admin bootstrap (PBKDF2 100k), invite, sign-up, session cookie, sync, CSRF', async () => {
+    const jar = {};
+    const call = async (who, method, p, body, extra = {}) => {
+      const r = await get(p, { method, headers: { 'content-type': 'application/json', origin: B, ...(jar[who] ? { cookie: jar[who] } : {}), ...extra }, body: body ? JSON.stringify(body) : undefined });
+      const c = r.headers.get('set-cookie'); if (c) jar[who] = /rh_session=[^;]*/.exec(c)[0];
+      return { status: r.status, data: await r.json().catch(() => null), cookie: c };
+    };
+    assert.equal((await (await get('/api/health')).json()).accounts, true);
+    const login = await call('admin', 'POST', '/api/auth/login', { username: 'owner', password: 'smoke admin passphrase' });
+    assert.equal(login.status, 200, JSON.stringify(login.data)); assert.match(login.cookie, /HttpOnly; SameSite=Strict/);
+    const inv = await call('admin', 'POST', '/api/admin/invites', { maxUses: 1 });
+    assert.equal(inv.status, 201);
+    const su = await call('u', 'POST', '/api/auth/signup', { username: 'smoker', password: 'a long enough password', invite: inv.data.code });
+    assert.equal(su.status, 201, JSON.stringify(su.data));
+    assert.equal((await call('u2', 'POST', '/api/auth/signup', { username: 'second', password: 'a long enough password', invite: inv.data.code })).data.error, 'bad_invite');
+    assert.equal((await call('u', 'PUT', '/api/sync', { doc: { history: { 'movie:1': { type: 'movie', id: 1, ts: 1 } } }, version: 0 })).data.version, 1);
+    assert.equal((await call('u', 'GET', '/api/sync')).data.version, 1);
+    assert.equal((await call('u', 'GET', '/api/admin/users')).status, 403);
+    assert.equal((await call('u', 'POST', '/api/auth/logout', {}, { origin: 'https://evil.example' })).status, 403);
+    assert.equal((await get('/api/auth/me', { headers: { cookie: jar.u } })).headers.get('cache-control'), 'no-store');
+  });
 } finally {
   const ok = results.filter(Boolean).length;
   console.log(`\n${ok}/${results.length} Cloudflare runtime checks passed`);
   if (ok !== results.length) console.log('wrangler output:\n' + logs.split('\n').filter((l) => !/Request\.cf|ENOTFOUND|onlookupall|callbackTrampoline/.test(l)).slice(-20).join('\n'));
   wr.kill('SIGTERM'); mockSrv.close();
+  try { fs.rmSync(persistDir, { recursive: true, force: true }); } catch { /* temp */ }
   setTimeout(() => { wr.kill('SIGKILL'); process.exit(ok === results.length ? 0 : 1); }, 1500);
 }

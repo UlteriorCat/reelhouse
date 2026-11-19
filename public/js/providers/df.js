@@ -6,6 +6,8 @@ import { makeStream } from './common.js';
 
 export const id = 'bdix-df';
 export const name = 'DhakaFlix';
+/** 'bdix' = reachable only from a BDIX network; 'public' = on the open internet. Used to explain failures. */
+export const group = 'bdix';
 export const SERVERS = [
   { url: 'http://172.16.50.12', root: '/DHAKA-FLIX-12/' },
   { url: 'http://172.16.50.14', root: '/DHAKA-FLIX-14/' },

@@ -5,6 +5,8 @@ import { makeStream } from './common.js';
 
 export const id = 'bdix-fh';
 export const name = 'FlixHub';
+/** 'bdix' = reachable only from a BDIX network; 'public' = on the open internet. Used to explain failures. */
+export const group = 'public';
 export const BASE_URL = 'https://flixhub.net';
 /** Mutable on purpose (see cf.js). */
 export const endpoints = { base: BASE_URL };

@@ -26,4 +26,10 @@ for (const [name, args] of Object.entries(jobs)) {
 // 150 s clip for resume / next-episode tests (resume only applies past 30 s)
 const r = spawnSync(ff, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=15', '-f', 'lavfi', '-i', 'sine=frequency=330:sample_rate=48000', '-t', '150', '-shortest', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '36', '-g', '30', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '32k', '-movflags', '+faststart', path.join(out, 'test_long.mp4')], { stdio: 'inherit' });
 if (r.status !== 0) process.exit(1);
-console.log('made test_long.mp4\nmedia written to', out);
+console.log('made test_long.mp4');
+// HLS shaped like the Fendrix CDN: playlist and segments named .jpg (served as image/jpeg upstream)
+fs.mkdirSync(path.join(out, 'hls', '1080p'), { recursive: true });
+const hls = spawnSync(ff, ['-hide_banner', '-loglevel', 'error', '-y', ...SRC, ...H264, '-g', '24', '-c:a', 'aac', '-f', 'hls', '-hls_time', '2', '-hls_playlist_type', 'vod', '-hls_segment_filename', path.join(out, 'hls', '1080p', 'playlist_%03d.jpg'), path.join(out, 'hls', '1080p', 'playlist.jpg')], { stdio: 'inherit' });
+if (hls.status !== 0) process.exit(1);
+fs.writeFileSync(path.join(out, 'hls', 'master.m3u8'), '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=4692000,RESOLUTION=1920x1080,NAME="1080p"\n1080p/playlist.jpg\n');
+console.log('made hls/ (master.m3u8 + 1080p/playlist.jpg)\nmedia written to', out);

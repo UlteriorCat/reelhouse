@@ -5,6 +5,8 @@
 //
 //   POST /p   JSON envelope {url, method, headers, body}  -> small text/JSON/HTML responses (provider lookups)
 //   GET  /s   ?u=<url>&h=<b64url json headers>&n=<filename>&dl=1&k=<token>  -> streamed media with Range support
+//             &hls=1: if the body is an HLS playlist (sniffed: CDNs serve them under any name and type), every URI in it
+//             is rewritten to come back through /s with the same token and headers, so players work without CORS/Origin
 //   GET  /health
 //
 // Zero dependencies, Node >= 20. Configuration is by environment variables (see README).
@@ -119,6 +121,47 @@ function validateUrl(cfg, url) {
   }
 }
 
+// ---------------- HLS playlists ----------------
+/**
+ * Rewrites every URI of an HLS playlist (segment/variant lines and URI="..." attributes) to a relative `s?u=...` link,
+ * which resolves against the playlist's own gateway URL. Non-http(s) URIs (data:, skd:) are left alone.
+ * `params` (k, h) are carried over so child requests are authorised and keep their headers.
+ */
+export function rewritePlaylist(text, baseUrl, params = {}) {
+  const wrap = (uri) => {
+    let abs;
+    try { abs = new URL(uri.trim(), baseUrl); } catch { return uri; }
+    if (abs.protocol !== 'http:' && abs.protocol !== 'https:') return uri;
+    const p = new URLSearchParams({ u: abs.toString() });
+    for (const [k, v] of Object.entries(params)) if (v) p.set(k, v);
+    p.set('hls', '1');
+    return 's?' + p;
+  };
+  return String(text).split(/\r?\n/).map((line) => {
+    const t = line.trim();
+    if (!t) return '';
+    if (t.startsWith('#')) return t.replace(/URI="([^"]*)"/g, (m, u) => `URI="${wrap(u)}"`);
+    return wrap(t);
+  }).join('\n');
+}
+
+/** Reads at least `n` bytes (or to the end) without consuming them: the caller unshifts them back. */
+async function readPrefix(stream, n) {
+  const chunks = []; let len = 0;
+  while (len < n) {
+    const c = stream.read();
+    if (c) { chunks.push(c); len += c.length; continue; }
+    if (stream.readableEnded || stream.destroyed) break;
+    await new Promise((resolve, reject) => {
+      const done = () => { stream.off('readable', done); stream.off('end', done); stream.off('close', done); stream.off('error', fail); resolve(); };
+      const fail = (e) => { done(); reject(e); };
+      stream.on('readable', done); stream.on('end', done); stream.on('close', done); stream.on('error', fail);
+    });
+  }
+  return Buffer.concat(chunks);
+}
+const isPlaylist = (buf) => /^\uFEFF?\s*#EXTM3U/.test(buf.toString('utf8'));
+
 // ---------------- server ----------------
 export function loadConfig(env = process.env) {
   const host = env.HOST || '127.0.0.1';
@@ -219,6 +262,18 @@ export function createGateway(userCfg = {}) {
         const ac = new AbortController(); res.on('close', () => ac.abort());
         let up;
         try { up = await fetchUpstream(cfg, target.toString(), { method: req.method, headers: upstreamHeaders(target, extra, req.headers.range), signal: ac.signal }); } catch (e) { return upstreamError(req, res, e); }
+        if (url.searchParams.get('hls') === '1' && req.method === 'GET' && !req.headers.range && up.statusCode === 200) {
+          const head = await readPrefix(up, 64);
+          if (isPlaylist(head)) {
+            const parts = [head]; let n = head.length;
+            for await (const c of up) { n += c.length; parts.push(c); if (n > cfg.maxTextResponseBytes) break; }
+            if (n > cfg.maxTextResponseBytes) { up.destroy(); return sendJson(req, res, 502, { error: 'response_too_large' }); } // also when it all came in the first chunk
+            const carry = { k: url.searchParams.get('k') || '', h: hParam || '' };
+            const body = Buffer.from(rewritePlaylist(Buffer.concat(parts).toString('utf8'), up.finalUrl, carry), 'utf8');
+            return send(req, res, 200, body, { 'content-type': 'application/vnd.apple.mpegurl', 'content-length': String(body.length) });
+          }
+          if (head.length) up.unshift(head); // not a playlist (a segment): stream it unchanged below
+        }
         const out = { ...corsHeaders(req), 'x-content-type-options': 'nosniff', 'accept-ranges': up.headers['accept-ranges'] || 'bytes', 'content-type': guessType(up.headers['content-type'], new URL(up.finalUrl).pathname), 'cache-control': 'no-store' };
         for (const k of ['content-length', 'content-range', 'etag', 'last-modified']) if (up.headers[k]) out[k] = up.headers[k];
         if (url.searchParams.get('dl') === '1') {

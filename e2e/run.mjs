@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict';
 import { startApp, startGateway, createBdixMock, launch, shot, waitFor, sleep, repointProviders, MEDIA_DIR } from './lib.mjs';
 import { steps2 } from './steps2.mjs';
+import { steps4 } from './steps4.mjs';
+import { steps5 } from './steps5.mjs';
 
 const only = process.argv[2];
 const results = [];
@@ -107,15 +109,18 @@ try {
     assert.equal(await page.$$eval('.rail[data-rail=cast] .card.person', (e) => e.length), 14);
     assert.ok((await page.$$eval('.rail[data-rail=recs] .card', (e) => e.length)) >= 10);
     const actions = await page.$$eval('.dinfo .actions > *', (e) => e.map((x) => (x.textContent || x.getAttribute('aria-label')).trim()));
-    assert.ok(actions.includes('Play') && actions.includes('Download') && actions.includes('Trailer') && actions.includes('Add to My List'), actions.join('|'));
+    assert.ok(actions.includes('Play') && actions.includes('Download') && actions.includes('Trailer') && actions.includes('Save to a list'), actions.join('|'));
     assert.equal(await page.$eval('a[href^="https://www.youtube.com"]', (a) => a.rel), 'noopener noreferrer');
     assert.equal(bdix.log.length, 0, 'details page must not query BDIX');
     await shot(page, 'details-movie-desktop');
-    await page.click('button[aria-label="Add to My List"]');
-    await waitFor(async () => (await page.$eval('.dinfo .iconbtn', (e) => e.getAttribute('aria-pressed'))) === 'true', { what: 'pressed' });
+    await page.click('button[aria-label="Save to a list"]');
+    await page.waitForSelector('dialog.sheet[open] .row input[type=checkbox]');
+    await page.click('dialog.sheet .row input[type=checkbox]'); // My List
+    await page.keyboard.press('Escape');
+    await waitFor(() => page.$('.dinfo .iconbtn.on[aria-label="Saved to a list: change lists"]'), { what: 'saved state' });
     await ctx.reload(page);
     await waitFor(() => page.$('.dinfo h1'), { what: 'details after reload' });
-    assert.equal(await page.$eval('.dinfo .iconbtn[aria-pressed]', (e) => e.getAttribute('aria-pressed')), 'true', 'My List state persisted');
+    assert.ok(await page.$('.dinfo .iconbtn.on'), 'saved state persisted');
     await open(page, '#/list');
     await waitFor(() => page.$('.grid .card'), { what: 'list grid' });
     assert.equal(await page.$eval('.grid .card .t', (e) => e.textContent), 'The Matrix');
@@ -161,7 +166,7 @@ try {
     assert.ok(bdix.log.some((r) => r.path.startsWith('/api/posts?searchTerm=The%20Matrix')), 'Circle search');
     assert.ok(app.mockLog.some((l) => l === 'flixhub.net/watch/movie/the-matrix'), 'FlixHub fetched through the edge proxy');
     const chips = await page.$$eval('.pstat .chip', (e) => e.map((x) => x.textContent));
-    assert.deepEqual(chips, ['DhakaFlix: 5 found', 'Circle FTP: 1 found', 'FlixHub: 1 found']);
+    assert.deepEqual(chips, ['DhakaFlix: 5 found', 'Circle FTP: 1 found', 'FlixHub: 1 found', 'Fendrix: no match', 'Hexion: no match'], 'online sources are asked too (in this test neither has the title)');
     const t = await page.$$eval('.ticket', (els) => els.map((e) => ({ name: e.querySelector('.name').textContent, q: e.querySelector('.stub b').textContent, level: e.dataset.level, tags: [...e.querySelectorAll('.tag')].map((x) => x.textContent) })));
     assert.equal(t.length, 6, 'Circle and FlixHub return the same file URL in this mock; identical URLs are de-duplicated into one ticket');
     assert.ok(t[0].name.endsWith('1080p.WEB-DL.x264.AAC.mp4') && t[0].level === 'ok', 'best playable source first: ' + t[0].name);
@@ -193,6 +198,8 @@ try {
   });
 
   await steps2(ctx);
+  await steps4(ctx);
+  await steps5(ctx);
 } finally {
   const failed = results.filter((r) => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} steps passed`);

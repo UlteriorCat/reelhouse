@@ -1,266 +1,190 @@
-// Fendrix (Cinejoy / Shegu): encrypted HLS/file streams from public HTTPS APIs.
-// Port of the eclipsia "fendrix.js" scraper. Differences from the original:
-//   * title/year/imdbId come from TMDB details the app already has (no extra TMDB call)
-//   * Uses the browser's native SubtleCrypto for AES-GCM decryption instead of a software implementation
-//   * Returns makeStream()-shaped objects consistent with Reelhouse's provider contract
-//   * Subtitles from the API are attached to the stream for downstream use
-import { makeStream, heightOf } from './common.js';
+// Fendrix (Cinejoy / Shegu API): encrypted stream lists from public HTTPS endpoints.
+// Port of the eclipsia "fendrix.js" scraper (GPL-3.0, see /NOTICE.md). Same requests, order and filtering; differences:
+//   * title, year and IMDb id come from the TMDB details the site already loaded (the original makes its own TMDB call)
+//   * the Origin/Referer/User-Agent request headers are not sent: browsers forbid them, and the API was measured to
+//     answer any Origin with `Access-Control-Allow-Origin: *` (Nov 2026), so lookups go straight from the browser
+//   * AES-256-GCM uses WebCrypto; the original's software AES (./aesgcm.js) is the fallback outside secure contexts
+//   * the response is read as bytes: decoding it as text first replaces invalid UTF-8 and destroys the ciphertext
+//   * once the preferred API endpoint has answered, the others are not waited for (same result, no stall)
+//   * DEVIATION: when the master playlist cannot be read (always, from a browser) the master itself is offered
+//     (quality "auto") instead of dropping the stream; see resolveItem
+//   * HLS streams are flagged: their CDN rejects any foreign Origin, so they play only where the browser fetches
+//     them without one (built-in HLS: Safari, Chrome 142+) or in an external player. See streams.js playability().
+import { makeStream, unlessAbort } from './common.js';
 
 export const id = 'fendrix';
 export const name = 'Fendrix';
-/** All endpoints are public HTTPS — edge proxy is usable. */
-export const edge = true;
+/** Public HTTPS with CORS: never through the gateway or the edge proxy. */
+export const direct = true;
+export const group = 'public';
 
+export const SESSION_URL = 'https://enc-dec.app/api/enc-cinejoy';
+export const API_URL = 'https://api.shegu.xyz/';
+export const API_BASE = ['https://api.wing.st', 'https://api.shegu.st'];
+export const SERVERS = ['Nebula', 'Secret'];
 const BASE_URL = 'https://cinejoy.pk';
-const API_BASE = ['https://api.wing.st', 'https://api.shegu.st'];
-const ENC_PROXY = 'https://enc-dec.app/api/enc-cinejoy';
-const SERVERS = ['Nebula', 'Secret'];
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36';
+/** What the original sends with playback requests. Kept on the stream for external tools; a browser cannot send it. */
+const PLAY_HEADERS = { Origin: BASE_URL, Referer: BASE_URL + '/' };
 
-const STREAM_HEADERS = {
-  Origin: BASE_URL,
-  Referer: BASE_URL + '/',
-  'User-Agent': UA,
-};
+const isCount = (v) => Number.isInteger(v) && v >= 1;
+const pad2 = (n) => String(n).padStart(2, '0');
 
-// ---- helpers ----
+export function buildQuery(meta) {
+  const tmdbId = String(meta.tmdbId ?? '').trim();
+  if (!/^\d+$/.test(tmdbId) || (meta.type !== 'movie' && meta.type !== 'tv')) return null;
+  const isTv = meta.type === 'tv';
+  if (isTv && (meta.season == null || meta.episode == null)) return null;
+  const season = isTv ? Number(meta.season) : 1;
+  const episode = isTv ? Number(meta.episode) : 1;
+  if (isTv && (!isCount(season) || !isCount(episode))) return null;
+  return { tmdbId, isTv, season, episode };
+}
 
-function b64urlToBytes(s) {
-  const padded = s.replace(/-/g, '+').replace(/_/g, '/') + '=='.slice(0, (4 - (s.length % 4)) % 4);
-  const bin = atob(padded);
+export function sessionTarget(q, server, meta) {
+  let url = `${API_URL}?type=${q.isTv ? 'series' : 'movie'}&tmdb=${q.tmdbId}&server=${server}`;
+  if (q.isTv) url += `&season=${q.season}&episode=${q.episode}`;
+  if (meta.title) url += `&title=${encodeURIComponent(meta.title)}`;
+  if (meta.year) url += `&year=${meta.year}`;
+  if (meta.imdbId) url += `&imdb=${meta.imdbId}`;
+  return url;
+}
+
+export function b64ToBytes(s) {
+  let t = String(s || '').replace(/-/g, '+').replace(/_/g, '/').replace(/[\t\n\f\r ]/g, '');
+  while (t.length % 4) t += '=';
+  const bin = atob(t);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
 
-/** Decrypt AES-256-GCM using the browser's native SubtleCrypto. */
-async function aesGcmDecrypt(ciphertext, keyBytes, aadBytes) {
-  const iv = ciphertext.slice(0, 12);
-  const data = ciphertext.slice(12);
-  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']);
-  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aadBytes }, key, data);
+/** iv(12) || ciphertext || tag(16) -> UTF-8 text. Throws on a bad key/tag. */
+export async function openSealed(bytes, key, aad, { subtle = globalThis.crypto && globalThis.crypto.subtle } = {}) {
+  const iv = bytes.slice(0, 12);
+  const data = bytes.slice(12);
+  let plain;
+  if (subtle) {
+    const k = await subtle.importKey('raw', key, 'AES-GCM', false, ['decrypt']);
+    plain = new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, k, data));
+  } else {
+    const { aesGcmDecrypt } = await import('./aesgcm.js');
+    plain = aesGcmDecrypt(key, iv, data, aad);
+  }
   return new TextDecoder().decode(plain);
 }
 
-function resolveUrl(url, base) {
-  if (url.startsWith('http')) return url;
-  try { return new URL(url, base).href; } catch { return url; }
-}
-
-function extractHlsVariants(masterText, masterUrl) {
-  const variants = [];
-  const lines = masterText.split('\n');
-  let pending = null;
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (line.startsWith('#EXT-X-STREAM-INF:')) {
-      const m = line.match(/RESOLUTION=(\d+)x(\d+)/i);
-      pending = { height: m ? Number(m[2]) : 0 };
-    } else if (line && !line.startsWith('#') && pending) {
-      variants.push({ height: pending.height, url: resolveUrl(line, masterUrl) });
-      pending = null;
-    }
-  }
-  return variants;
-}
-
-function normalizeQuality(raw) {
-  const s = String(raw || '').toLowerCase();
-  if (s.includes('2160') || s.includes('4k')) return '2160p';
-  if (s.includes('1080') || s.includes('fhd')) return '1080p';
-  if (s.includes('720')) return '720p';
-  if (s.includes('480')) return '480p';
-  return 'auto';
-}
-
-function isHighValue(raw) {
-  return normalizeQuality(raw) !== 'auto';
-}
-
-// ---- encrypted session ----
-
-async function createEncryptedSession(ctx, params) {
-  let url = `https://api.shegu.xyz/?type=${params.isTv ? 'series' : 'movie'}&tmdb=${params.tmdbId}&server=${params.server}`;
-  if (params.isTv) url += `&season=${params.season}&episode=${params.episode}`;
-  if (params.title) url += `&title=${encodeURIComponent(params.title)}`;
-  if (params.year) url += `&year=${params.year}`;
-  if (params.imdbId) url += `&imdb=${params.imdbId}`;
-
-  const proxyUrl = `${ENC_PROXY}?url=${encodeURIComponent(url)}`;
-  const resp = await ctx.json(proxyUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
-  if (!resp || resp.status !== 200 || !resp.result) return null;
-
-  return {
-    body: b64urlToBytes(resp.result.data),
-    responseKey: b64urlToBytes(resp.result.state.responseKey),
-    aad: b64urlToBytes(resp.result.state.aad),
-  };
-}
-
-// ---- stream resolution ----
-
-async function readEndpoint(ctx, endpoint, session, serverName) {
+async function createSession(ctx, q, server, meta) {
+  const r = await ctx.json(`${SESSION_URL}?url=${encodeURIComponent(sessionTarget(q, server, meta))}`);
+  if (!r || r.status !== 200 || !r.result || !r.result.state) return null;
   try {
-    const res = await ctx.text(endpoint + '/g', {
-      method: 'POST',
-      body: session.body,
-      headers: {
-        Origin: STREAM_HEADERS.Origin,
-        Referer: STREAM_HEADERS.Referer,
-        'User-Agent': STREAM_HEADERS['User-Agent'],
-        'Content-Type': 'application/octet-stream',
-      },
-    });
-    if (res === null) return null;
-    // The response is encrypted binary; we need to decrypt it
-    // ctx.text gives us a string, but we need bytes — use raw fetch through ctx
-    // Actually, ctx.text returns a string of the response which is binary data.
-    // We need to handle this differently — the original code uses arrayBuffer().
-    // For now, we'll use the binary data approach.
-    return null; // placeholder — see note below
+    return { body: b64ToBytes(r.result.data), key: b64ToBytes(r.result.state.responseKey), aad: b64ToBytes(r.result.state.aad) };
   } catch { return null; }
 }
 
-/**
- * Read a server by creating an encrypted session and fetching streams from API endpoints.
- * Uses raw fetch for the encrypted binary response since ctx.text would corrupt binary data.
- */
-async function readServer(ctx, serverName, meta) {
-  const session = await createEncryptedSession(ctx, {
-    server: serverName,
-    isTv: meta.type === 'tv',
-    tmdbId: meta.tmdbId,
-    season: meta.season,
-    episode: meta.episode,
-    title: meta.title,
-    year: meta.year,
-    imdbId: meta.imdbId || '',
-  });
+async function readEndpoint(ctx, endpoint, session, server) {
+  // No Content-Type header: a bare byte body keeps this a CORS "simple request" (no preflight round trip).
+  const bytes = await ctx.bytes(endpoint + '/g', { method: 'POST', body: session.body });
+  if (!bytes) return null;
+  try {
+    const payload = JSON.parse(await openSealed(bytes, session.key, session.aad));
+    const items = (payload && payload.data && payload.data.stream) || [];
+    if (!Array.isArray(items)) return null;
+    return items.filter((it) => it && typeof it === 'object').map((it) => ({ ...it, sourceServer: server }));
+  } catch { return null; }
+}
+
+async function readServer(ctx, q, server, meta) {
+  const session = await createSession(ctx, q, server, meta);
   if (!session) return [];
-
-  const requestInit = {
-    method: 'POST',
-    body: session.body,
-    headers: {
-      Origin: STREAM_HEADERS.Origin,
-      Referer: STREAM_HEADERS.Referer,
-      'User-Agent': STREAM_HEADERS['User-Agent'],
-      'Content-Type': 'application/octet-stream',
-    },
-  };
-
-  // Try each API base; first success wins
-  for (const endpoint of API_BASE) {
-    try {
-      const res = await ctx.text(endpoint + '/g', requestInit);
-      if (res === null) continue;
-      // The response text needs to be decoded from encrypted binary.
-      // Since ctx.text gives us a decoded string of what may be binary content,
-      // we need to convert it back to bytes for decryption.
-      const bytes = new Uint8Array(res.length);
-      for (let i = 0; i < res.length; i++) bytes[i] = res.charCodeAt(i) & 0xff;
-
-      const decrypted = await aesGcmDecrypt(bytes, session.responseKey, session.aad);
-      const payload = JSON.parse(decrypted);
-      const streamItems = payload?.data?.stream;
-      if (!Array.isArray(streamItems)) continue;
-      return streamItems
-        .filter((item) => item && typeof item === 'object')
-        .map((item) => ({ ...item, sourceServer: serverName }));
-    } catch { continue; }
+  // Both endpoints in parallel like the original, and the first one in API_BASE order that answers wins. Unlike the
+  // original we do not wait for the others once a preferred endpoint has answered: a hanging fallback endpoint must
+  // not hold back (or, at the provider timeout, throw away) a result we already have.
+  const slots = API_BASE.map((e) => readEndpoint(ctx, e, session, server).catch(unlessAbort(null)));
+  // a slot we stop waiting for may still reject later (timeout/cancel); mark it handled so that is not an unhandled
+  // rejection. Awaiting a slot below still sees its error.
+  for (const slot of slots) slot.catch(() => {});
+  for (const slot of slots) {
+    const items = await slot;
+    if (items) return items;
   }
   return [];
 }
 
-/** Resolve one stream item into playable stream objects. */
-async function resolveStreamItem(ctx, item) {
-  const serverLabel = item.sourceServer || SERVERS[0];
-  const subtitles = Array.isArray(item.captions)
-    ? item.captions.filter((c) => c && c.url).map((c) => ({
-        url: String(c.url).trim(),
-        language: String(c.language || c.id || 'en').toLowerCase(),
-        name: String(c.language || c.id || 'Subtitle'),
-      }))
-    : [];
-
-  const streams = [];
-
-  if (item.type === 'hls' && item.playlist) {
-    try {
-      const masterText = await ctx.text(item.playlist, { headers: STREAM_HEADERS });
-      if (!masterText) return [];
-      const variants = extractHlsVariants(masterText, item.playlist);
-      const hasMultiAudio = /#EXT-X-MEDIA\s*:\s*TYPE=AUDIO/i.test(masterText);
-
-      if (hasMultiAudio) {
-        // Multi-audio master — keep the master playlist URL itself
-        const maxH = Math.max(0, ...variants.map((v) => v.height));
-        const q = maxH >= 2160 ? '2160p' : maxH >= 1080 ? '1080p' : maxH >= 720 ? '720p' : 'auto';
-        streams.push({ url: item.playlist, quality: q, server: serverLabel, subtitles });
-      } else {
-        // Pick individual variant streams (only 2160p and 1080p)
-        for (const v of variants) {
-          if (v.height !== 2160 && v.height !== 1080) continue;
-          streams.push({ url: v.url, quality: v.height === 2160 ? '2160p' : '1080p', server: serverLabel, subtitles });
-        }
-      }
-    } catch { /* ignore */ }
-  }
-
-  if (item.type === 'file' && item.qualities && typeof item.qualities === 'object') {
-    for (const [key, entry] of Object.entries(item.qualities)) {
-      const qualUrl = entry?.url;
-      if (!qualUrl || !String(qualUrl).startsWith('http') || !isHighValue(key)) continue;
-      streams.push({ url: qualUrl, quality: normalizeQuality(key), server: serverLabel, subtitles });
+export function hlsVariants(text, masterUrl) {
+  const out = [];
+  let pending = null;
+  for (const raw of String(text).split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('#EXT-X-STREAM-INF:')) {
+      const m = line.match(/RESOLUTION=(\d+)x(\d+)/i);
+      pending = { height: m ? Number(m[2]) : 0 };
+    } else if (line && !line.startsWith('#') && pending) {
+      let url = line;
+      try { url = new URL(line, masterUrl).href; } catch { /* keep as is */ }
+      out.push({ height: pending.height, url });
+      pending = null;
     }
   }
-
-  return streams;
+  return out;
 }
 
-// ---- main search ----
+export const qualityLabel = (raw) => {
+  const s = String(raw || '').toLowerCase();
+  if (s.includes('2160') || s.includes('4k')) return '2160p';
+  if (s.includes('1080') || s.includes('fhd')) return '1080p';
+  return 'auto';
+};
 
-export async function search(meta, ctx, opts = {}) {
-  if (!meta.title || !meta.tmdbId) return [];
-  if (meta.type !== 'movie' && meta.type !== 'tv') return [];
-  if (meta.type === 'tv' && (meta.season == null || meta.episode == null)) return [];
+export function subtitlesOf(captions) {
+  if (!Array.isArray(captions)) return [];
+  return captions
+    .map((c) => ({ url: c && typeof c.url === 'string' ? c.url.trim() : '', lang: String((c && (c.language || c.id)) || 'en').toLowerCase(), label: String((c && (c.language || c.id)) || 'Subtitle') }))
+    .filter((c) => /^https?:\/\//i.test(c.url));
+}
 
-  // Run all servers in parallel
-  const serverResults = await Promise.all(
-    SERVERS.map((s) => readServer(ctx, s, meta).catch(() => []))
-  );
-  const allItems = serverResults.flat();
-  if (!allItems.length) return [];
-
-  // Resolve each stream item (may involve HLS manifest fetches)
-  const resolvedGroups = await Promise.all(
-    allItems.map((item) => resolveStreamItem(ctx, item).catch(() => []))
-  );
-  const allStreams = resolvedGroups.flat();
-
-  // Deduplicate by URL
-  const seen = new Set();
-  const unique = [];
-  for (const s of allStreams) {
-    if (seen.has(s.url)) continue;
-    seen.add(s.url);
-    unique.push(s);
+async function resolveItem(ctx, item) {
+  const base = { server: item.sourceServer || SERVERS[0], subtitles: subtitlesOf(item.captions) };
+  if (item.type === 'hls' && item.playlist) {
+    const text = await ctx.text(item.playlist);
+    // DEVIATION: in a browser this read always fails (the CDN answers 404 to any request with an Origin header, and
+    // fetch() always sends one). The original then drops the item; we offer the master playlist itself: the built-in
+    // HLS player reads it without an Origin and picks the variant on its own.
+    if (text === null) return [{ ...base, url: item.playlist, quality: 'auto', hls: true }];
+    const variants = hlsVariants(text, item.playlist);
+    if (/#EXT-X-MEDIA\s*:\s*TYPE=AUDIO/i.test(text)) {
+      // separate audio renditions: only the master playlist carries them, so keep the master
+      const max = Math.max(0, ...variants.map((v) => v.height));
+      const quality = max >= 2160 ? '2160p' : max === 1080 ? '1080p' : max === 720 ? '720p' : 'auto';
+      return [{ ...base, url: item.playlist, quality, hls: true }];
+    }
+    return variants.filter((v) => v.height === 2160 || v.height === 1080).map((v) => ({ ...base, url: v.url, quality: v.height === 2160 ? '2160p' : '1080p', hls: true }));
   }
+  if (item.type === 'file' && item.qualities && typeof item.qualities === 'object') {
+    return Object.entries(item.qualities)
+      .filter(([k, e]) => e && typeof e.url === 'string' && e.url.startsWith('http') && qualityLabel(k) !== 'auto')
+      .map(([k, e]) => ({ ...base, url: e.url, quality: qualityLabel(k), hls: false }));
+  }
+  return [];
+}
 
-  // Sort: 2160p first, then 1080p, then rest
-  unique.sort((a, b) => heightOf(b.quality) - heightOf(a.quality));
+const weight = (q) => (q === '2160p' ? 2 : q === '1080p' ? 1 : 0);
 
-  // Convert to Reelhouse's makeStream format
+export async function search(meta, ctx) {
+  const q = buildQuery(meta);
+  if (!q) return [];
+  const perServer = await Promise.all(SERVERS.map((s) => readServer(ctx, q, s, meta).catch(unlessAbort([]))));
+  const groups = await Promise.all(perServer.flat().map((it) => resolveItem(ctx, it).catch(unlessAbort([]))));
+  const seen = new Set();
+  const unique = groups.flat().filter((s) => (seen.has(s.url) ? false : (seen.add(s.url), true)));
+  // stable: 2160p, then 1080p, then the rest, ties in discovery order (Array.prototype.sort is stable)
+  unique.sort((a, b) => weight(b.quality) - weight(a.quality));
   return unique.map((s) => {
-    const stream = makeStream({
-      provider: id,
-      providerName: `${name} • ${s.server}`,
-      url: s.url,
-      quality: s.quality,
-      headers: STREAM_HEADERS,
-    });
-    // Attach subtitles for downstream use
-    if (s.subtitles?.length) stream.subtitles = s.subtitles;
+    // URLs end in master.m3u8 / playlist.jpg / a hash: name the stream after the title instead (also the download name)
+    const label = meta.title ? `${meta.title}${q.isTv ? ` S${pad2(q.season)}E${pad2(q.episode)}` : meta.year ? ` (${meta.year})` : ''}` : undefined;
+    const stream = makeStream({ provider: id, providerName: `${name} (${s.server})`, url: s.url, quality: s.quality, filename: label, headers: PLAY_HEADERS, container: s.hls ? 'm3u8' : undefined });
+    stream.direct = true;
+    if (s.hls) stream.needsNativeHls = true;
+    if (s.subtitles.length) stream.subtitles = s.subtitles;
     return stream;
   });
 }

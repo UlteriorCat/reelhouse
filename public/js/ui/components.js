@@ -1,4 +1,4 @@
-import { h, imgUrl, srcset, clamp } from '../util.js';
+import { h, mount, imgUrl, srcset, clamp } from '../util.js';
 import { hrefTitle, hrefWatch } from '../router.js';
 import { store } from '../store.js';
 import { progressKey } from '../util.js';
@@ -22,6 +22,8 @@ const ICONS = {
   right: { d: 'M9 5l7 7-7 7' },
   warn: { d: 'M12 3l10 18H2zM12 10v5M12 18v.5' },
   film: { d: 'M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M16 9h4M4 15h4M16 15h4' },
+  user: { d: 'M4 21a8 8 0 0 1 16 0', extra: '<circle cx="12" cy="8" r="4"/>' },
+  history: { d: 'M3 12a9 9 0 1 0 3-6.7M3 4v4h4M12 8v4l3 2' },
 };
 
 export function icon(name, cls = '') {
@@ -42,7 +44,8 @@ export function posterImg(path, alt) {
 }
 
 // ---------- cards ----------
-export function card(item, { resume } = {}) {
+/** `onRemove`: adds a remove (x) button on the poster; `removeLabel` names it for screen readers. */
+export function card(item, { resume, onRemove, removeLabel } = {}) {
   const pct = resume ? clamp(Math.round((resume.pos / resume.dur) * 100), 0, 100) : 0;
   const a = h('a', { class: 'card', href: hrefTitle(item.type, item.id), 'aria-label': `${item.title}${item.year ? ` (${item.year})` : ''}` },
     h('div', { class: 'poster' },
@@ -50,9 +53,10 @@ export function card(item, { resume } = {}) {
       item.rating ? h('span', { class: 'rate' }, '\u2605 ', item.rating.toFixed(1)) : null,
       resume ? h('div', { class: 'bar' }, h('i', { style: { width: pct + '%' } })) : null),
     h('div', { class: 'meta' }, h('div', { class: 't' }, item.title), item.year ? h('div', { class: 'y' }, item.year) : null));
-  if (!resume) return a;
-  return h('div', { class: 'card-wrap' }, a,
-    h('a', { class: 'resume', href: hrefWatch(item.type, item.id, resume.season, resume.episode), 'aria-label': `Resume ${item.title}` }, icon('play')));
+  if (!resume && !onRemove) return a;
+  return h('div', { class: 'card-wrap', dataset: { key: `${item.type}:${item.id}` } }, a,
+    resume ? h('a', { class: 'resume', href: hrefWatch(item.type, item.id, resume.season, resume.episode), 'aria-label': `Resume ${item.title}` }, icon('play')) : null,
+    onRemove ? h('button', { class: 'remove', type: 'button', 'aria-label': removeLabel || `Remove ${item.title}`, onClick: (e) => { e.preventDefault(); onRemove(e.currentTarget.closest('.card-wrap'), { keyboard: e.detail === 0 }); } }, icon('close')) : null);
 
 }
 
@@ -68,12 +72,13 @@ export function skeletonRail(title = '') {
 }
 
 /** A horizontally scrolling row. `nodes` are already-built card elements. */
-export function rail(title, nodes, { id } = {}) {
+export function rail(title, nodes, { id, more } = {}) {
   const track = h('div', { class: 'track', role: 'list' }, nodes.map((n) => { n.setAttribute('role', 'listitem'); return n; }));
   const by = (dir) => track.scrollBy({ left: dir * track.clientWidth * 0.85, behavior: 'smooth' });
   const section = h('section', { class: 'rail', 'aria-label': title, dataset: id ? { rail: id } : undefined },
     h('div', { class: 'rail-head' },
       h('h2', null, title),
+      more ? h('a', { class: 'more', href: more.href, 'aria-label': more.aria || undefined }, more.label) : null,
       h('div', { class: 'rail-ctrl' },
         h('button', { class: 'iconbtn', type: 'button', 'aria-label': `Scroll ${title} left`, onClick: () => by(-1) }, icon('left')),
         h('button', { class: 'iconbtn', type: 'button', 'aria-label': `Scroll ${title} right`, onClick: () => by(1) }, icon('right')))),
@@ -87,12 +92,40 @@ export const resumeFor = (entry) => {
 };
 
 // ---------- toast ----------
-export function toast(message, { error = false, ms = 4200 } = {}) {
+/**
+ * `action`: {label, onClick} adds one button (e.g. Undo). Such a toast does not time out (nobody should lose Undo
+ * for being slow): it stays until used or dismissed, a newer one replaces it, or the page changes.
+ * `focusAction`: move keyboard focus to the action (when the removal itself was done from the keyboard).
+ */
+export function toast(message, { error = false, ms, action, focusAction = false } = {}) {
   const host = document.getElementById('toasts');
-  const t = h('div', { class: `toast${error ? ' err' : ''}` }, message);
+  const close = () => { t.remove(); removeEventListener('hashchange', close); };
+  const act = action ? h('button', { type: 'button', onClick: () => { close(); action.onClick(); } }, action.label) : null;
+  const t = h('div', { class: `toast${error ? ' err' : ''}${action ? ' has-action' : ''}`, role: error ? 'alert' : 'status' }, h('span', null, message),
+    act, action ? h('button', { class: 'dismiss', type: 'button', 'aria-label': 'Dismiss', onClick: close }, icon('close')) : null);
+  if (action) { for (const old of host.querySelectorAll('.toast.has-action')) old.remove(); addEventListener('hashchange', close); }
   host.append(t);
-  setTimeout(() => t.remove(), ms);
+  if (!action) setTimeout(close, ms || 4200);
+  if (act && focusAction) act.focus();
   return t;
+}
+
+/** A labelled switch row (Settings, Save to list). */
+export function toggleRow(label, hint, checked, onChange) {
+  const input = h('input', { type: 'checkbox', checked, id: 'c' + Math.random().toString(36).slice(2) });
+  input.addEventListener('change', () => onChange(input.checked, input));
+  return h('div', { class: 'row' }, h('label', { for: input.id }, label, hint ? h('small', null, hint) : null), input);
+}
+
+/** Ask before something destructive. Resolves true only when the person confirms. */
+export function confirmSheet({ title, text, confirmLabel = 'Confirm', danger = true }) {
+  return new Promise((resolve) => {
+    let answered = false;
+    const sheet = openSheet({ title, onClose: () => { if (!answered) resolve(false); } });
+    const yes = h('button', { class: `btn${danger ? ' danger' : ' primary'}`, type: 'button', onClick: () => { answered = true; sheet.close(); resolve(true); } }, confirmLabel);
+    mount(sheet.body, h('p', { class: 'lead' }, text), h('div', { class: 'actions' }, yes, h('button', { class: 'btn ghost', type: 'button', onClick: () => sheet.close() }, 'Cancel')));
+    yes.focus();
+  });
 }
 
 // ---------- sheet (bottom sheet on phones, side drawer on desktop) ----------

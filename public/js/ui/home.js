@@ -1,7 +1,7 @@
 import { h, mount, imgUrl, srcset } from '../util.js';
 import { homeSWR, api, ApiError } from '../api.js';
 import { store } from '../store.js';
-import { card, rail, skeletonRail, resumeFor, icon } from './components.js';
+import { card, rail, skeletonRail, resumeFor, icon, toast } from './components.js';
 import { hrefTitle, hrefWatch } from '../router.js';
 
 export function errorNotice(e, retry) {
@@ -47,6 +47,37 @@ function lazyRecsRail(entry, signal) {
   return slot;
 }
 
+export const focusCard = (key) => { const a = document.querySelector(`#main .card-wrap[data-key="${CSS.escape(key)}"] a.card`); if (a) a.focus(); };
+
+/** Continue watching: each card can be removed (with Undo); "See all" opens the full history. */
+export function continueRail(hist) {
+  const section = rail('Continue watching', hist.slice(0, 12).map((e) => historyCard(e, () => section)), { id: 'continue', more: { href: '#/history', label: 'See all', aria: 'See all of your history' } });
+  return section;
+}
+/** A history card with a remove button. `container()` is the element to remove when the last card goes. */
+/** `onChange` (History page): called after a removal and after Undo, so the page can redraw (empty state, counts). */
+export function historyCard(e, container, onChange) {
+  const item = { type: e.type, id: e.id, title: e.title, year: e.type === 'tv' ? `S${e.season} E${e.episode}` : e.year || '', poster: e.poster, rating: 0 };
+  return card(item, {
+    resume: resumeFor(e),
+    removeLabel: `Remove ${e.title} from your history`,
+    onRemove: (wrap, how = {}) => {
+      const removed = store.removeHistory(e.type, e.id);
+      const parent = wrap.parentNode; const next = wrap.nextSibling;
+      wrap.remove();
+      const box = container && container();
+      const emptied = box && !box.querySelector('.card-wrap');
+      if (emptied && !onChange) box.hidden = true;
+      if (onChange) onChange();
+      toast(`Removed ${e.title} from your history`, { focusAction: how.keyboard, action: removed && { label: 'Undo', onClick: () => {
+        store.restoreHistory(removed);
+        if (onChange) onChange(); else { parent.insertBefore(wrap, next && next.parentNode === parent ? next : null); if (box) box.hidden = false; }
+        focusCard(`${e.type}:${e.id}`); // focus goes back to the restored title, not to <body>
+      } } });
+    },
+  });
+}
+
 export function homeView({ root, signal }) {
   mount(root, skeletonRail('Trending today'), skeletonRail('Popular movies'));
   let rendered = false;
@@ -55,9 +86,8 @@ export function homeView({ root, signal }) {
     const nodes = [];
     if (data.hero) nodes.push(hero(data.hero));
     const hist = store.history();
-    if (hist.length) nodes.push(rail('Continue watching', hist.slice(0, 12).map((e) => card({ type: e.type, id: e.id, title: e.type === 'tv' ? `${e.title}` : e.title, year: e.type === 'tv' ? `S${e.season} E${e.episode}` : e.year || '', poster: e.poster, rating: 0 }, { resume: resumeFor(e) })), { id: 'continue' }));
-    const list = store.list();
-    if (list.length) nodes.push(rail('My List', list.slice(0, 20).map((i) => card(i)), { id: 'list' }));
+    if (hist.length) nodes.push(continueRail(hist));
+    for (const l of store.lists()) if (l.items.length) nodes.push(rail(l.name, l.items.slice(0, 20).map((i) => card(i)), { id: 'list-' + l.id, more: { href: '#/list', label: 'See all', aria: `See all of ${l.name}` } }));
     const [first, ...rest] = data.rows;
     nodes.push(rail(first.title, first.items.map((i) => card(i)), { id: first.id }));
     if (hist.length) nodes.push(lazyRecsRail(hist[0], signal));

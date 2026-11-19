@@ -1,3 +1,5 @@
+> **Outdated copy.** The maintained version is `docs/IMPLEMENTATION.md` (it covers the Fendrix/Hexion online sources added in Nov 2026). This file is kept only as uploaded.
+
 # Reelhouse: implementation notes
 
 How the site was built, which technologies it uses and why, what was measured, what was verified, and what was not. Companion to the README (in the project zip) (setup and deployment) and to the separate *EclipsiaBDIX scraping reference* (how the original CloudStream plugin finds and fetches links).

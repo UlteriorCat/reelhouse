@@ -10,20 +10,25 @@ export const providerById = (id) => PROVIDERS.find((p) => p.id === id);
 
 /** Wraps the transport for one provider and counts what happened, so an empty result can be explained. */
 export function makeCtx(net, provider, signal) {
+  // One request, counted. `read` turns an OK response into the value; failures become null (never thrown),
+  // except AbortError/TimeoutError, which must reach the orchestrator so it can report 'cancelled'/'timeout'.
+  async function fetchOk(url, init, read) {
+    ctx.attempts++;
+    try {
+      const res = await net.request(url, { ...init, signal, provider });
+      if (!res.ok) { ctx.http++; return null; }
+      return await read(res);
+    } catch (e) {
+      if (e && (e.name === 'AbortError' || e.name === 'TimeoutError')) throw e;
+      ctx.network++;
+      return null;
+    }
+  }
   const ctx = {
     attempts: 0, network: 0, http: 0,
-    async text(url, init = {}) {
-      ctx.attempts++;
-      try {
-        const res = await net.request(url, { ...init, signal, provider });
-        if (!res.ok) { ctx.http++; return null; }
-        return await res.text();
-      } catch (e) {
-        if (e && (e.name === 'AbortError' || e.name === 'TimeoutError')) throw e;
-        ctx.network++;
-        return null;
-      }
-    },
+    text: (url, init = {}) => fetchOk(url, init, (r) => r.text()),
+    /** Raw response bytes (Uint8Array). Use for binary payloads: text() would replace invalid UTF-8 with U+FFFD. */
+    bytes: (url, init = {}) => fetchOk(url, init, async (r) => new Uint8Array(await r.arrayBuffer())),
     async json(url, init = {}) {
       const t = await ctx.text(url, init);
       if (t === null) return null;
@@ -78,6 +83,8 @@ export async function resolveStreams(meta, { net, enabled = {}, signal, onProgre
       else status[p.id] = { state: e && e.name === 'TimeoutError' ? 'timeout' : 'error', count: 0, ms: Date.now() - started };
     } finally {
       clearTimeout(timer);
+      // the provider has answered: requests it left running (e.g. a slower fallback endpoint) are no longer needed
+      if (!ctrl.signal.aborted) ctrl.abort(new DOMException('Provider finished', 'AbortError'));
       signal && signal.removeEventListener('abort', onAbort);
       if (!finalized) onProgress && onProgress(p.id, 'done', status[p.id]);
     }

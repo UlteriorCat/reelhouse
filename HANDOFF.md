@@ -4,8 +4,10 @@
 
 ## Status
 
-* Built and tested: 70 unit and integration tests, 25 browser end-to-end steps (real Chromium, real gateway, real video files), 8 Cloudflare runtime checks (real `workerd`). Reproduced from a clean extract.
-* **Not verified**: the real BDIX servers, FlixHub, TMDB, OpenSubtitles and a live Cloudflare deployment were unreachable during development (mocks used); Firefox/Safari; real phones; https `pages.dev` with the gateway. See `VERIFICATION.md` section 14.
+* Built and tested: 127 unit and integration tests, 35 browser end-to-end steps (real Chromium, real gateway, real video files), 9 Cloudflare runtime checks (real `workerd`). Reproduced from a clean extract.
+* Online sources **Fendrix** and **Hexion** (Nov 2026): ported, checked against the live services from the sandbox (VERIFICATION section 18) and covered by parity tests against the original scraper files. Fendrix plays with built-in HLS (Chrome/Edge 142+, Safari), through the gateway in other browsers (Firefox: HLS playlists rewritten, tested with hls.js), or in an external player; Hexion's link domains rotate (`EDGE_PROXY_HOSTS`).
+* **Accounts, lists, sync** (Nov 2026): invite-only accounts on Cloudflare D1, sign-in, password change, admin page (invites, users), named watch lists, history removal with Undo, and a merge-based sync of history/lists/resume positions/settings between devices. Unit, multi-device browser and real-`workerd`+D1 tests. Deploy steps: README *Accounts*.
+* **Not verified**: a live D1 database on Cloudflare (local D1 in workerd only); the real BDIX servers, FlixHub, TMDB, OpenSubtitles and a live Cloudflare deployment were unreachable during development (mocks used); Hexion through Cloudflare's own edge; Firefox/Safari; real phones; https `pages.dev` with the gateway. See `VERIFICATION.md` section 14.
 * Key constraint: **Cloudflare cannot reach BDIX**, and an https page cannot freely call http BDIX servers. On `pages.dev` the user normally needs the **gateway** (`gateway/bdix-gateway.mjs`) on their own device or network.
 
 ## Read order
@@ -19,7 +21,8 @@ public/                  deployed as-is
   index.html  css/app.css  icon.svg  manifest.webmanifest  _headers  _routes.json
   js/brand.js            name, tagline, theme colour, logo path (single source)
   js/main.js router.js api.js store.js net.js player.js streams.js subs.js util.js core.js
-  js/providers/          df.js cf.js fh.js (BDIX scrapers ported), common.js, index.js (orchestrator)
+  js/account.js          sign-in state + sync engine;  js/sync-merge.js  merge rules (tombstones, last-writer-wins)
+  js/providers/          df.js cf.js fh.js (BDIX-era scrapers), fn.js (Fendrix) hx.js (Hexion) aesgcm.js, common.js, index.js (orchestrator)
   js/ui/                 home details watch browse settings sources shell components
   vendor/                committed player (ArtPlayer), hls.js light, font (versioned, immutable)
 functions/api/[[path]].js   the single Pages Function -> lib/api.js
@@ -45,7 +48,7 @@ Outside npm: **Node 22+**; **ffmpeg** with libx264/libx265/vpx/aac/ac3/opus for 
 
 ```bash
 npm ci                    # installs everything incl. Chromium and workerd binaries (no other downloads needed)
-npm test                  # 70 tests, ~3 s
+npm test                  # 127 tests, ~3 s
 npm run e2e:media         # once; writes e2e/media/ (git-ignored)
 npm run e2e               # ~4 min; add a word to run matching steps only
 npm run smoke:cf          # ~20 s
@@ -59,6 +62,7 @@ Sandbox reminders (details: `VERIFICATION.md` section 3): only npm/PyPI/GitHub/U
 ## Deploy and customise (owner tasks)
 
 * Deploy: Cloudflare Pages, build command empty, output directory `public`, secret `TMDB_API_KEY` (README). Run the gateway on a BDIX machine and set `ALLOWED_ORIGINS=https://<project>.pages.dev`.
+* Accounts (optional): create a D1 database, bind it as `DB` in `wrangler.toml` (commented block there), add secrets `ADMIN_USERNAME` / `ADMIN_PASSWORD`, redeploy, sign in once to create the admin (README *Accounts*).
 * Rename / new logo: edit `public/js/brand.js` and replace `public/icon.svg`, then `npm run rebrand` and `npm test` (README section "Change the name or logo").
 
 ## Open items
@@ -78,7 +82,7 @@ READ FIRST, in this order, before changing anything:
 1. HANDOFF.md  2. CLAUDE.md  3. the sections of docs/IMPLEMENTATION.md that CLAUDE.md maps to
 my task  4. VERIFICATION.md (before touching tests).
 
-SETUP: Node 22+, run `npm ci`, then `npm test` and confirm the baseline (70 passing) before
+SETUP: Node 22+, run `npm ci`, then `npm test` and confirm the baseline (127 passing) before
 you change code. For browser tests run `npm run e2e:media` once (needs ffmpeg), then `npm run e2e`.
 
 TASK: <one or two sentences: what I want, and why>

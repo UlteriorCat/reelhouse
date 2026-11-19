@@ -1,4 +1,5 @@
-// A fake internet for local development and the E2E suite: TMDB, the Stremio OpenSubtitles addon, subtitle files and FlixHub.
+// A fake internet for local development and the E2E suite: TMDB, the Stremio OpenSubtitles addon, subtitle files, FlixHub
+// and the Hexion (4kHdHub) link chain, shaped like the live pages in Nov 2026.
 // Inject it as the `fetch` of the dev server:  createDevServer({ fetchImpl: createMockFetch({ mediaBase }) })
 
 const TITLES = [
@@ -21,7 +22,8 @@ export const SRT_BN = Buffer.from('1\n00:00:00,500 --> 00:00:30,000\n\u09b8\u09c
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 
-export function createMockFetch({ mediaBase = 'http://127.0.0.1:1', log = [] } = {}) {
+/** `sources.hexion`: when false, 4kHdHub answers but has no page for the title (E2E steps switch it on). */
+export function createMockFetch({ mediaBase = 'http://127.0.0.1:1', log = [], sources = { hexion: true } } = {}) {
   return async (input) => {
     const url = new URL(String(input));
     log.push(url.hostname + url.pathname);
@@ -69,6 +71,23 @@ export function createMockFetch({ mediaBase = 'http://127.0.0.1:1', log = [] } =
     if (url.hostname === 'flixhub.net' || url.hostname === 'www.flixhub.net') {
       if (p === '/watch/movie/the-matrix') return new Response(`<html><body><video id="theaterPlayer" data-stream-url="${mediaBase}/media/test.mp4"></video></body></html>`, { headers: { 'content-type': 'text/html' } });
       return new Response('not found', { status: 404 });
+    }
+    const html = (body) => new Response(`<html><body>${body}</body></html>`, { headers: { 'content-type': 'text/html' } });
+    if (url.hostname === '4khdhub.one') {
+      if (!sources.hexion) return p === '/' ? html('<p>Nothing found</p>') : new Response('not found', { status: 404 });
+      if (p === '/' && url.searchParams.get('s') === 'The Matrix 1999') return html('<a href="/the-matrix-movie-1/" class="movie-card"><h3 class="movie-card-title">The Matrix</h3><p class="movie-card-meta">1999</p><span class="movie-card-format">Movies</span></a>');
+      if (p === '/the-matrix-movie-1/') return html('<div class="download-item"><div class="file-title">The Matrix (1999) 1080p WEB-DL x264 AAC [1.4 GB]</div><a href="https://greenmotors.club/?id=m1">Download HubCloud</a></div>');
+      return new Response('not found', { status: 404 });
+    }
+    if (url.hostname === 'greenmotors.club' && url.searchParams.get('id') === 'm1') {
+      // the wrapper hides the target as base64(base64(rot13(base64({"o": base64(url)}))))
+      const b64 = (t) => Buffer.from(t, 'latin1').toString('base64');
+      const rot = (t) => t.replace(/[a-zA-Z]/g, (c) => { const n = c.charCodeAt(0) + 13; return String.fromCharCode(n <= (c <= 'Z' ? 90 : 122) ? n : n - 26); });
+      return html(`<script>s('o', '${b64(b64(rot(b64(JSON.stringify({ o: b64('https://hubcloud.mov/drive/m1') })))))}');</script>`);
+    }
+    if (url.hostname === 'hubcloud.mov' && p === '/drive/m1') return html("<script>var url = 'https://gamerxyt.com/hubcloud.php?host=hubcloud&id=m1';</script>");
+    if (url.hostname === 'gamerxyt.com' && url.searchParams.get('id') === 'm1') {
+      return html('<div class="card-header">The.Matrix.1999.1080p.WEB-DL.x264.AAC.mp4</div><ul><li>File Size<i id="size">1.4 GB</i></li></ul><a href="https://e2e-media.workers.dev/files/The.Matrix.1999.1080p.WEB-DL.x264.AAC.mp4">Download [FSL Server]</a><a href="https://pixel.hubcloud.mov/?id=x">Download [PixelServer : 2]</a>');
     }
     return new Response('unmocked host ' + url.hostname, { status: 502 });
   };

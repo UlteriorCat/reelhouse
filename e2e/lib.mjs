@@ -1,5 +1,6 @@
 // Shared helpers for the end-to-end run: a mock BDIX server on a real socket, the dev server with mocked upstreams,
 // and a Chromium launcher that records console errors and Content-Security-Policy violations.
+import { createD1 } from '../dev/d1-sqlite.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -79,11 +80,15 @@ export function createBdixMock({ cors = true } = {}) {
   return { srv, log, state, listen: async () => (state.port = await listen(srv)), close: () => srv.close(), get base() { return `http://127.0.0.1:${state.port}`; } };
 }
 
-export async function startApp({ env = { TMDB_API_KEY: 'test-key' }, bdix } = {}) {
+export const E2E_ADMIN = { username: 'owner', password: 'e2e admin passphrase' };
+export async function startApp({ env = { TMDB_API_KEY: 'test-key' }, bdix, accounts = true } = {}) {
   const mockLog = [];
-  const dev = createDevServer({ env, fetchImpl: createMockFetch({ mediaBase: bdix ? bdix.base : 'http://127.0.0.1:1', log: mockLog }) });
+  // accounts: an in-memory database and a first admin (dev/d1-sqlite.mjs stands in for Cloudflare D1)
+  if (accounts && !env.DB) env = { ...env, DB: createD1(), ADMIN_USERNAME: E2E_ADMIN.username, ADMIN_PASSWORD: E2E_ADMIN.password, PBKDF2_ITERATIONS: '10000' };
+  const sources = { hexion: false }; // the Hexion step switches its mock site on; other steps see "not on that site"
+  const dev = createDevServer({ env, fetchImpl: createMockFetch({ mediaBase: bdix ? bdix.base : 'http://127.0.0.1:1', log: mockLog, sources }) });
   const port = await listen(dev);
-  return { dev, port, origin: `http://127.0.0.1:${port}`, mockLog, close: () => dev.close() };
+  return { dev, port, origin: `http://127.0.0.1:${port}`, mockLog, sources, close: () => dev.close() };
 }
 
 export async function startGateway({ origin, token = 'tok', allowPrivate = ['127.0.0.1'] }) {
@@ -92,19 +97,31 @@ export async function startGateway({ origin, token = 'tok', allowPrivate = ['127
   return { gw, url: `http://127.0.0.1:${port}`, token, close: () => gw.close() };
 }
 
+/** Hosts the browser contacts directly for Fendrix (and Hexion's file hosts); aborted unless a step mocks them. */
+export const PUBLIC_SOURCE_HOSTS = /^(enc-dec\.app|api\.wing\.st|api\.shegu\.st|api\.shegu\.xyz|.*\.workers\.dev|.*\.r2\.dev|.*\.r2\.cloudflarestorage\.com|pixeldrain\.com)$/;
+
 export async function launch() {
   // @sparticuz/chromium ships Lambda-oriented flags that switch browser security OFF (CORS, mixed content, site isolation).
   // A test run with those flags would not behave like a user's browser, so they are removed.
-  const RELAXED = /^--(disable-web-security|allow-running-insecure-content|disable-site-isolation-trials|disable-features=.*(IsolateOrigins|site-per-process).*)$/;
+  // --single-process is also unlike a user's browser, and it cannot open a second profile (used as a second device).
+  const RELAXED = /^--(disable-web-security|allow-running-insecure-content|disable-site-isolation-trials|single-process|disable-features=.*(IsolateOrigins|site-per-process).*)$/;
   const args = chromium.args.filter((a) => !RELAXED.test(a));
   const browser = await puppeteer.launch({ args: [...args, '--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--mute-audio'], executablePath: await chromium.executablePath(), headless: 'shell' });
   const problems = [];
-  async function newPage({ width = 1280, height = 800, touch = false, label = 'page', setup } = {}) {
-    const page = await browser.newPage();
+  /** `context`: a separate browser profile (own cookies and storage), i.e. a second device. */
+  async function newPage({ width = 1280, height = 800, touch = false, label = 'page', setup, context } = {}) {
+    const page = await (context || browser).newPage();
     await page.setViewport({ width, height, deviceScaleFactor: touch ? 2 : 1, isMobile: touch, hasTouch: touch });
     await page.setRequestInterception(true);
     page.on('request', (r) => {
       const u = new URL(r.url());
+      // a step may answer requests itself (public-source mocks); everything else below is the default
+      if (page.__intercept && page.__intercept(r, u)) return;
+      // the browser calls these public sources directly; never let a test reach the real internet.
+      // Fendrix's session broker answers "no session" (a valid reply: no console noise), anything else is cut off.
+      if (u.hostname === 'enc-dec.app') return r.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"status":404,"error":"not found"}' });
+      if (u.hostname === 'api.wing.st') return r.respond({ status: 404, contentType: 'text/plain', headers: { 'access-control-allow-origin': '*' }, body: 'not found' }); // Settings -> Test connection
+      if (PUBLIC_SOURCE_HOSTS.test(u.hostname)) return r.abort('internetdisconnected');
       if (u.hostname === 'image.tmdb.org') {
         return r.respond({ status: 200, contentType: 'image/svg+xml', headers: { 'access-control-allow-origin': '*' }, body: placeholderSvg('/' + u.pathname.split('/').pop().replace(/\.\w+$/, '')) });
       }
@@ -114,6 +131,7 @@ export async function launch() {
     page.on('console', (m) => {
       const t = m.text();
       if (page.__expectErrors) return; // failure-injection steps deliberately provoke network/CORS errors
+      if (page.__ignoreErrors && page.__ignoreErrors.test(t)) return; // a step names the exact errors it expects
       if (m.type() === 'error' && !/Failed to load resource.*(404|5\d\d)/.test(t)) problems.push(`[${label}] console.error: ${t}`);
     });
     page.on('pageerror', (e) => problems.push(`[${label}] pageerror: ${e.message}`));
@@ -126,7 +144,7 @@ export async function launch() {
     return page;
   }
   async function cspViolations(page) { return page.evaluate(() => window.__csp || []); }
-  return { browser, newPage, problems, cspViolations, close: () => browser.close() };
+  return { browser, newPage, problems, cspViolations, newDevice: () => browser.createBrowserContext(), close: () => browser.close() };
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

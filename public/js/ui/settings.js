@@ -6,19 +6,17 @@ import { PROVIDERS } from '../providers/index.js';
 import { SERVERS } from '../providers/df.js';
 import { endpoints as cfEndpoints } from '../providers/cf.js';
 import { endpoints as fhEndpoints, edge as FH_EDGE } from '../providers/fh.js';
+import * as fendrix from '../providers/fn.js';
+import * as hexion from '../providers/hx.js';
 import { SUB_LANGS, langName, subtitleStyle, SUB_COLORS } from '../subs.js';
-import { openSheet, toast } from './components.js';
+import { openSheet, toast, toggleRow } from './components.js';
+import { clearHistoryFlow } from './browse.js';
+import { accountSection } from './account.js';
 
 const DIAG_TEXT = {
   ok: ['reachable', 'ok'], cors: ['reachable, but the browser may not read it (CORS)', 'bad'], unreachable: ['unreachable', 'bad'],
   auth: ['gateway token rejected', 'bad'], blocked: ['blocked by the gateway (not on its allow-list)', 'bad'],
 };
-
-function toggleRow(label, hint, checked, onChange) {
-  const input = h('input', { type: 'checkbox', checked, id: 'c' + Math.random().toString(36).slice(2) });
-  input.addEventListener('change', () => onChange(input.checked));
-  return h('div', { class: 'row' }, h('label', { for: input.id }, label, hint ? h('small', null, hint) : null), input);
-}
 
 export function openSettings() {
   const sheet = openSheet({ title: 'Settings' });
@@ -41,11 +39,13 @@ export function openSettings() {
         ['Circle FTP', cfEndpoints.primary + '/', null],
         ['Circle FTP (fallback)', cfEndpoints.fallback + '/', null],
         ['FlixHub', fhEndpoints.base + '/', { edge: true }],
+        ['Fendrix', fendrix.API_BASE[0] + '/', fendrix],
+        ['Hexion', hexion.endpoints.base + '/', hexion],
       ];
       mount(diag, targets.map(([name]) => h('div', { dataset: { host: name } }, h('span', null, name), h('span', null, 'testing\u2026'))));
       await Promise.all(targets.map(async ([name, url, provider], i) => {
         let state;
-        if (name === 'Gateway') { try { const r = await fetch(url); state = r.ok ? 'ok' : 'unreachable'; } catch { state = 'unreachable'; } } else if (provider && !gwOn) {
+        if (name === 'Gateway') { try { const r = await fetch(url); state = r.ok ? 'ok' : 'unreachable'; } catch { state = 'unreachable'; } } else if (provider && (provider.direct || !gwOn)) {
           try { const r = await net.request(url, { provider, timeoutMs: 8000 }); state = r.ok ? 'ok' : 'unreachable'; } catch { state = 'unreachable'; }
         } else state = await net.diagnose(url);
         const [text, cls] = DIAG_TEXT[state];
@@ -56,7 +56,7 @@ export function openSettings() {
     };
     const connection = h('section', { class: 'set-group' },
       h('h3', null, 'Connection to BDIX servers'),
-      h('p', { style: { color: 'var(--dim)', fontSize: '14px' } }, mode === 'gateway' ? 'Requests go through your gateway.' : 'Requests go straight from this browser (FlixHub via the site\u2019s edge proxy). Browsers often block this for BDIX servers; the gateway fixes that.'),
+      h('p', { style: { color: 'var(--dim)', fontSize: '14px' } }, mode === 'gateway' ? 'Requests go through your gateway (Fendrix still connects directly: it does not need it).' : 'Requests go straight from this browser (FlixHub and Hexion via the site\u2019s edge proxy). Browsers often block this for BDIX servers; the gateway fixes that. Fendrix always connects directly.'),
       h('div', { class: 'stack', style: { marginTop: '10px' } }, gw, tok,
         h('div', { class: 'actions', style: { marginTop: 0 } }, h('button', { class: 'btn small primary', type: 'button', onClick: save }, 'Save'), h('button', { class: 'btn small', type: 'button', onClick: test }, 'Test connection'))),
       diag,
@@ -68,7 +68,7 @@ export function openSettings() {
 
     // ----- sources -----
     const sources = h('section', { class: 'set-group' }, h('h3', null, 'Sources'),
-      ...PROVIDERS.map((p) => toggleRow(p.name, null, s.providers[p.id] !== false, (v) => { store.saveSettings({ providers: { [p.id]: v } }); })),
+      ...PROVIDERS.map((p) => toggleRow(p.name, p.group === 'bdix' ? 'BDIX server: needs a BDIX network' : 'Online source: works on any internet connection', s.providers[p.id] !== false, (v) => { store.saveSettings({ providers: { [p.id]: v } }); })),
       toggleRow('Original file types only', 'Off also lists .mov, .m4v and .webm files from DhakaFlix.', s.compat, (v) => store.saveSettings({ compat: v })));
 
     // ----- playback -----
@@ -119,12 +119,12 @@ export function openSettings() {
     const data = h('section', { class: 'set-group' }, h('h3', null, 'This device'),
       status,
       h('div', { class: 'actions' },
-        h('button', { class: 'btn small', type: 'button', onClick: () => { store.clearHistory(); toast('Watch history cleared'); } }, 'Clear history'),
+        h('button', { class: 'btn small danger', type: 'button', onClick: () => clearHistoryFlow() }, 'Clear history'),
         h('button', { class: 'btn small', type: 'button', onClick: () => { store.clearAllProgress(); toast('Resume positions cleared'); } }, 'Clear resume positions'),
         h('button', { class: 'btn small', type: 'button', onClick: () => { store.resetSettings(); toast('Settings reset'); draw(); } }, 'Reset settings')),
       h('p', { style: { color: 'var(--faint)', fontSize: '13px', marginTop: '12px' } }, 'This product uses the TMDB API but is not endorsed or certified by TMDB. Player: ArtPlayer (MIT). Provider logic is a port of the eclipsia-bdix CloudStream scrapers (GPL-3.0).'));
 
-    mount(sheet.body, connection, sources, playback, subs, data);
+    mount(sheet.body, accountSection(draw, () => sheet.close()), connection, sources, playback, subs, data);
     paint();
   };
   draw();

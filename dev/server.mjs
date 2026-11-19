@@ -39,10 +39,17 @@ export function createDevServer({ env = process.env, fetchImpl = fetch, publicDi
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     try {
       if (url.pathname.startsWith('/api/')) {
-        const r = await handleApi(new Request(url, { method: req.method }), env, { fetch: fetchImpl });
-        const headers = {};
-        r.headers.forEach((v, k) => { headers[k] = v; });
-        res.writeHead(r.status, headers);
+        const chunks = [];
+        let size = 0;
+        for await (const c of req) { size += c.length; if (size > 1_000_000) { res.writeHead(413); return res.end(); } chunks.push(c); }
+        const headers = new Headers();
+        for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
+        const body = ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks);
+        const r = await handleApi(new Request(url, { method: req.method, headers, body }), env, { fetch: fetchImpl });
+        const out = {};
+        r.headers.forEach((v, k) => { out[k] = v; });
+        if (r.headers.getSetCookie && r.headers.getSetCookie().length) out['set-cookie'] = r.headers.getSetCookie();
+        res.writeHead(r.status, out);
         return res.end(Buffer.from(await r.arrayBuffer()));
       }
       let rel = decodeURIComponent(url.pathname);
@@ -61,9 +68,14 @@ export function createDevServer({ env = process.env, fetchImpl = fetch, publicDi
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const env = { ...loadDevVars(path.resolve(here, '../.dev.vars')), ...process.env };
+  // accounts: a local SQLite file stands in for the D1 database (git-ignored, like wrangler's own local state)
+  fs.mkdirSync(path.resolve(here, '../.wrangler'), { recursive: true });
+  const { createD1 } = await import('./d1-sqlite.mjs');
+  env.DB = createD1(path.resolve(here, '../.wrangler/dev-accounts.sqlite'));
   const port = Number(process.env.PORT || 8788);
   createDevServer({ env }).listen(port, () => {
     console.log(`Reelhouse dev server: http://localhost:${port}`);
     if (!env.TMDB_API_KEY) console.log('  (TMDB_API_KEY is not set: the home page will show the setup notice)');
+    console.log(env.ADMIN_USERNAME ? `  accounts: local database; first admin sign-in as ${env.ADMIN_USERNAME} (ADMIN_PASSWORD in .dev.vars)` : '  accounts: local database; set ADMIN_USERNAME / ADMIN_PASSWORD in .dev.vars to create the first admin');
   });
 }

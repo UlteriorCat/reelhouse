@@ -14,6 +14,8 @@ export function matchRoute({ segs, query }) {
   if (!a) return { name: 'home', params: {}, query };
   if (a === 'search' && segs.length === 1) return { name: 'search', params: {}, query };
   if (a === 'list' && segs.length === 1) return { name: 'list', params: {}, query };
+  if (a === 'history' && segs.length === 1) return { name: 'history', params: {}, query };
+  if (a === 'admin' && segs.length === 1) return { name: 'admin', params: {}, query };
   if ((a === 'movie' || a === 'tv') && isId(b) && segs.length === 2) return { name: 'details', params: { type: a, id: b }, query };
   if (a === 'watch' && b === 'movie' && isId(c) && segs.length === 3) return { name: 'watch', params: { type: 'movie', id: c }, query };
   if (a === 'watch' && b === 'tv' && isId(c) && isId(d) && isId(e) && segs.length === 5) return { name: 'watch', params: { type: 'tv', id: c, season: Number(d), episode: Number(e) }, query };
