@@ -4,6 +4,8 @@ import { makeStream, QUALITY_RANK } from './common.js';
 
 export const id = 'bdix-cf';
 export const name = 'Circle FTP';
+/** 'bdix' = reachable only from a BDIX network; 'public' = on the open internet. Used to explain failures. */
+export const group = 'bdix';
 export const BASE_URL_P = 'http://new.circleftp.net:5000';
 export const FALLBACK_URL = 'http://15.1.1.50:5000';
 /** Mutable on purpose: tests and advanced users can repoint the servers if they move. */

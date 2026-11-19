@@ -34,7 +34,7 @@ const t = spawnSync('npm', ['test'], { encoding: 'utf8' });
 const unit = Number((t.stdout.match(/ℹ tests (\d+)/) || [])[1]);
 const unitFail = Number((t.stdout.match(/ℹ fail (\d+)/) || [])[1]);
 check(unit > 0 && unitFail === 0, `unit tests run: ${unit} tests, ${unitFail} failing`);
-const e2eSrc = ['e2e/run.mjs', 'e2e/steps2.mjs', 'e2e/steps3.mjs'].map(read).join('\n');
+const e2eSrc = ['e2e/run.mjs', 'e2e/steps2.mjs', 'e2e/steps3.mjs', 'e2e/steps4.mjs'].map(read).join('\n');
 const e2e = (e2eSrc.match(/await step\(/g) || []).length + 2; // the layout step is a loop over 3 viewports
 const cf = (read('e2e/cloudflare-smoke.mjs').match(/await t\(/g) || []).length;
 const goldenScenarios = Object.keys(JSON.parse(read('test/fixtures/golden.json'))).length;

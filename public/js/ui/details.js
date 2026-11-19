@@ -7,7 +7,7 @@ import { hrefWatch, href } from '../router.js';
 import { openSources } from './sources.js';
 import { BRAND } from '../brand.js';
 
-const metaOf = (d, season, episode) => ({ type: d.type, tmdbId: String(d.id), title: d.title, year: d.year, season, episode });
+const metaOf = (d, season, episode) => ({ type: d.type, tmdbId: String(d.id), title: d.title, year: d.year, imdbId: d.imdbId || '', season, episode });
 
 function listButton(d) {
   const on = () => store.inList(d.type, d.id);

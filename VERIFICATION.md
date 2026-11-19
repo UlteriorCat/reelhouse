@@ -53,7 +53,8 @@ Built-in Node modules used by the project and tests: `node:test`, `node:assert/s
 
 | Symptom | Cause | Rule |
 |---|---|---|
-| Network works only for some hosts | Allow-list: npm registry, PyPI, GitHub, Ubuntu archives; everything else (gitea.com, TMDB, OpenSubtitles, flixhub.net, real BDIX) is blocked; the egress proxy answers `403` | Use mocks for all external services; use `curl --noproxy '*'` for localhost |
+| Network works only for some hosts | Earlier sessions: allow-list of npm registry, PyPI, GitHub, Ubuntu archives (the egress proxy answered `403` for everything else). The Nov 2026 session reached public sites too (4kHdHub, enc-dec.app, api.wing.st), which made the live provider checks in section 18 possible; BDIX is never reachable | Use mocks for all tests either way (the E2E harness answers or aborts the online providers' hosts); use `curl --noproxy '*'` for localhost |
+| A live check of a browser feature passed in Node but the feature failed in Chromium | Node's `fetch` sends no `Origin`; browsers always do on cross-origin requests (the Fendrix CDN refuses those) | Verify browser-facing network behaviour in the browser (or in a mock that copies the server's header rules) |
 | `mkdir -p a/{b,c}` created a literal directory named `{b,c}` | `/bin/sh` is dash: no brace expansion | List paths explicitly or use Node/Python |
 | A verification one-liner printed nothing after its first command and reported `Syntax error: "(" unexpected` | dash also lacks `<( ... )` process substitution, and the syntax error aborts the **entire line**, so later checks silently do not run | Use temp files, or run the script with `bash script.sh` / `bash -c '...'`. After any check, confirm its expected output lines actually appeared: no output is not a pass |
 | A background server vanished between tool calls | Processes do not persist across calls | Start servers **inside the same call** or use a Node orchestrator script that spawns, waits, asserts and kills (see `e2e/cloudflare-smoke.mjs`) |
@@ -84,6 +85,7 @@ Typical durations: unit about 3 s; E2E 3-4 minutes; Cloudflare smoke about 20 s.
 |---|---|---|
 | `test/api.test.mjs` | `lib/` (API router, TMDB client, subtitle service) | A fake upstream `fetch` records every call. Checks: 5-row aggregation and slimmed payload; persons and posterless items dropped; exactly one upstream call per row; key sent as `api_key` (v3) or `Bearer` (v4) and **never in any response**; missing key → 501; `/health` without secrets; validation (400) and error mapping (404, 401→502, 429→503); OpenSubtitles query is lowercase + alphabetical, TV uses `parent_tmdb_id`; Stremio fallback maps 3-letter codes and filters hosts; subtitle download flow (login, download, gzip link); SSRF guards (non-https, suffix look-alikes, wrong hosts); edge proxy allow-list including `user@host`, ports, look-alike domains; `APP_NAME` sets the OpenSubtitles User-Agent |
 | `test/gateway.test.mjs` | `gateway/bdix-gateway.mjs` | A real gateway and a real mock upstream on loopback. Token enforcement; refuses non-loopback without token; envelope forwarding with header allow-list (cookie and custom headers dropped), UA and per-host Referer injection; CORS origin echo and private-network preflight; Range → 206 with exact bytes; content-type fix by extension; `Content-Disposition` sanitising (CR/LF, quotes, non-ASCII); SSRF matrix (loopback, decimal and hex IPv4, `[::1]`, mapped IPv6 in both forms, NAT64, 10/8, 192.168/16, `localhost`, `file:`, `ftp:`, credentials, redirect into link-local); `classify()` table for IPv4 and IPv6 |
+| `test/public-providers.test.mjs` | `providers/fn.js`, `hx.js`, `aesgcm.js`, edge allow-list | The **original** `fendrix.js`/`hexion.js` executed in a `vm` against the same mocks: identical streams and requests (movie/TV, HLS with/without audio renditions, file qualities, WP-API and search paths); deviations (unreadable master, `workers.dev` pages, VC-1); sealed reply survives as bytes, bad tag yields nothing; software AES-GCM equals WebCrypto; no forbidden headers, simple-request POST; gateway bypass and direct media; built-in-HLS ranking; cancel at the first request and mid-chain; hanging fallback endpoint; exact-host edge allow-list incl. look-alikes, ports, userinfo, IP literals |
 | `test/providers.test.mjs` | `public/js/providers/*`, `net.js` | 14 **parity** tests against golden output (section 6); `.mov` deviation; release-name parsing; failure classification (unreachable / error / empty / ok); one provider timing out does not affect others; cancellation; settle window (early return, slow provider aborted); duplicate-URL choice in both arrival orders; transport (gateway envelope, edge proxy URL, direct options, `mediaUrl`, `diagnose` states) |
 | `test/client-logic.test.mjs` | `store.js`, `streams.js`, `subs.js`, `util.js` | Settings merge and corrupt-data fallback; storage that throws; history dedupe and cap; resume rules (>30 s and <93 %); progress pruning; My List; clear functions; `browserCaps` from fake `canPlayType`; **playability matrix** (the codec findings in section 9); ranking order; external links (Android intent, iOS callback); `.m3u`; encoding detection (UTF-8, BOM, UTF-16, Windows-1252); SRT→VTT; subtitle style maths; formatting helpers |
 | `test/router.test.mjs` | `router.js` | Valid routes; malformed or hostile paths (`/movie/../..`, huge ids, bad escapes) all become not-found; href builders round-trip |
@@ -118,7 +120,7 @@ The golden file is data recorded from the GPL-3.0 originals (see `NOTICE.md`). R
 * **Failure capture**: any browser `console.error` or `pageerror` (except expected 404/5xx resource noise, and except pages flagged `__expectErrors` for deliberate failure injection) and any `securitypolicyviolation` fails the run.
 * **Screenshots** are written to `e2e/screenshots/` (git-ignored) at 390, 820 and 1440 px and for key states; they are reviewed by eye, not compared pixel-wise.
 
-### Steps (25)
+### Steps (28)
 
 | # | Step | Key assertions |
 |---|---|---|
@@ -145,6 +147,9 @@ The golden file is data recorded from the GPL-3.0 originals (see `NOTICE.md`). R
 | 23 | keyboard | M, C, Space work on arrival (no click first) and again after a sheet closes |
 | 24 | race regression | 8 cold navigations home → watch; the player always mounts and no stale error appears |
 | 25 | mobile | phone portrait keeps 16:9, 3 toolbar buttons; landscape fits the height; tablet and phone details have no overflow |
+| 26 | Fendrix | gateway configured but unused; session + sealed reply answered in the browser, decrypted, POST without Content-Type; local CDN that 404s any request with an Origin: the lookup's own master read is refused, the master is offered and plays through built-in HLS with sound; a page `fetch` of it gets 404; ticket "Fendrix (Nebula)" |
+| 27 | Hexion | 4kHdHub chain (search, wrapper, HubCloud, file page) through the edge proxy; one ticket "Hexion (FSL)" with size tag, interstitial link ignored; nothing downloaded during lookup; plays from the file host (HTTP cache off: edge replies are cacheable) |
+| 28 | online + BDIX down | BDIX guidance shown, plus the hint that the online sources did not answer either |
 
 ## 8. Cloudflare runtime smoke test
 
@@ -176,6 +181,14 @@ Procedure: edit the code to re-introduce the bug, run `npm test`, confirm exactl
 | Subtitle host allow-list regex without the `$` anchor | `sub download: OS flow ... and SSRF guards` |
 | Swallow `AbortError` while reading a response body | `REGRESSION: aborting while the body downloads rejects with AbortError` |
 | Duplicate-URL rule back to "first wins" | `duplicate URLs from different providers keep the entry that knows the resolution` |
+| Fendrix reads the reply with `text()` (the first committed approach) | fendrix parity tests |
+| Fendrix / Hexion item stage swallow `AbortError` | both cancel tests / `hexion: cancelling while file pages are still loading` |
+| No `direct` bypass of the gateway; `direct` media sent through the gateway | `fendrix: goes straight from the browser even when a gateway is configured` |
+| No `workers.dev` acceptance | `hexion deviation: current file pages ...` |
+| No `m3u8` container override; file qualities unfiltered | fendrix parity tests |
+| No built-in-HLS playability rule | `playability: Fendrix HLS needs built-in HLS ...` |
+| Fendrix host added to the edge list | `edge proxy allow-list: ...` |
+| Wait for every endpoint (`Promise.all`) again | `fendrix: a hanging fallback endpoint does not hold back ...` |
 
 Also exercised the other way round: editing `brand.js` without running `npm run rebrand` makes `brand: index.html and the web manifest match ...` fail.
 
@@ -206,6 +219,13 @@ Found by testing (not by review), with how it was found and what keeps it fixed.
 | 10 | `DDP5.1` not recognised in audio label | unit test | tolerant patterns | providers test |
 | 11 | Slow or dead provider delayed playback | design review while writing the gateway step | settle window | providers test |
 | 12 | E2E browser had CORS disabled | probe of `type=basic` for a cross-origin response | strip flags in the harness; rerun everything | harness comment, section 7 |
+| 14 | Fendrix could never return streams: binary reply read as text (78 U+FFFD in 194 bytes); `AbortError` swallowed | live probe; cancel test | `ctx.bytes()`; `unlessAbort()` | parity + mutation tests |
+| 15 | Fendrix returned nothing in real browsers: its master-playlist read carries an Origin, which the CDN refuses | E2E with a CDN copying the live header rule | offer the master; built-in HLS plays it | E2E step 26, unit deviation test |
+| 16 | Hanging fallback endpoint stalled Fendrix to the timeout; the abandoned request caused an unhandled rejection | harness quirk (CDP cannot send 530) → unit test | prefer-first wait; mark slots handled; orchestrator aborts a provider's leftovers when it answers | unit test + mutation |
+| 17 | Hexion: no `DOMParser` outside a browser, swallowed aborts, none of today's file hosts recognised | unit tests; live run (original finds 0) | port on injected `DOMParser`; `unlessAbort`; documented deviation | parity, deviation, cancel tests |
+| 18 | `imdbId` missing from the lookup meta (watch and details pages) | review against the originals' inputs | pass `d.imdbId` | providers use it in tests; E2E step 27 (search path) |
+| 19 | Off-BDIX with an online source answering "error": guidance said "No matching files" instead of explaining BDIX | tracing the failure-UX step | BDIX and online groups judged separately | E2E steps 17 and 28 |
+| 20 | E2E not hermetic once online providers existed: gateway step reached live FlixHub/Hexion; edge replies cached across steps | console error + step time (27 s → 2.5 s) | harness answers/aborts provider hosts; endpoints pointed at the mock; cache off in step 27 | harness |
 | 13 | UX polish: hero hid the first rail; toolbar wrapped; notice headings dim inside sheets; subtitle tooltip ran into its label | screenshot review | CSS and label changes | screenshots, E2E step 25 |
 
 Test-side mistakes (not product bugs) were also found and corrected, e.g. a tautological assertion, a selector that matched the wrong button, ICU naming `bn` "Bangla", counting tickets after URL de-duplication, an orphaned `wrangler`. They are listed so the same traps are recognised quickly.
@@ -214,18 +234,19 @@ Test-side mistakes (not product bugs) were also found and corrected, e.g. a taut
 
 | Suite | Result |
 |---|---|
-| `npm test` | 70 tests pass |
-| `npm run e2e` | 25 steps pass; no browser console errors; no CSP violations |
+| `npm test` | 90 tests pass |
+| `npm run e2e` | 28 steps pass; no browser console errors (step 26 allows exactly the fallback endpoint's CORS error); no CSP violations |
 | `npm run smoke:cf` | 8 checks pass |
 | `npm run check:docs` | passes |
 | Clean-room reproduction | extract the zip, `npm ci`, `npm test`, `npm run build:vendor` (bundles identical to the committed ones), `npm run e2e:media`, `npm run e2e`, `npm run smoke:cf` |
 
-Measured on the home page (desktop, local server, printed by E2E step 22): 68 requests, app JS 115 KB as served to the browser (118 KB across all 24 modules on disk, 37 KB gzipped), CSS 21 KB, font 40 KB, `DOMContentLoaded` 130-190 ms. Player libraries are not requested on the home page.
+Measured on the home page (desktop, local server, printed by E2E step 22): 68 requests, app JS 143 KB as served to the browser (151 KB across all 27 modules on disk, 46 KB gzipped), CSS 21 KB, font 40 KB, `DOMContentLoaded` 130-190 ms. Player libraries are not requested on the home page.
 
 ## 14. Not verified (and how to verify it yourself)
 
 | Not verified | Why | How to check |
 |---|---|---|
+| Fendrix and Hexion on a real deployment | checked live from the sandbox in Node and Chromium (section 18), but not from Cloudflare's edge (Hexion's sites may block it), not in Firefox (no built-in HLS) or on phones | Open a popular title on your deployed site; Settings → Test connection shows both rows |
 | Real BDIX servers, FlixHub, Circle FTP | unreachable from the build sandbox; response shapes come from the original parsers | On your network: deploy or run `npm run dev`, open **Settings → Test connection**, then play a title you know exists |
 | Real TMDB and OpenSubtitles | blocked from the sandbox; mocked with documented shapes | Set your keys; open Home; play something; check Subtitles |
 | A real Cloudflare deployment, edge caching, quotas | only the local runtime was used | Deploy; watch the Functions analytics |
@@ -270,3 +291,19 @@ The earlier deliverable (`EclipsiaBDIX-Scraping-Reference.md`, a description of 
 * **Independent re-implementation**: a stdlib Python client of the three providers was run against a local mock server and compared with the real scrapers' output on identical data (6 of 6 identical, POST body byte-identical).
 * **Document drift check**: 39 literals (limits, URLs, constants) checked present in both source and document.
 * **Corrections made along the way**: `15.1.1.50` is not a private address; all four DhakaFlix POSTs are always sent; the scrapers' hardcoded TMDB key is dead code under the plugin's host.
+
+## 18. Live checks of the online sources (Nov 18-19, 2026)
+
+Done by hand from the sandbox, not part of any test (tests never reach the internet). TMDB answers were supplied locally (no third-party key was used); everything else was real.
+
+| Check | Result |
+|---|---|
+| Original `fendrix.js`, Inception and Breaking Bad S01E01 | 1 stream each (1080p HLS variant); `api.shegu.st` 530, `api.wing.st` 200 |
+| Port `fn.js` in Node, same titles, gateway configured | identical streams and the same 7 requests; gateway not used |
+| `/g` with a foreign Origin, no headers, `text/plain` | 200, `ACAO: *`, preflight allowed; WebCrypto decrypts the reply; `text()` corrupts it |
+| HLS CDN with Origin `https://*.pages.dev`, `http://localhost`, `https://example.com` / none / cinejoy | 404 / 200 / 200 |
+| Chromium 153 `<video src=master.m3u8>` | `canPlayType` "maybe", 1280x720 metadata, no Origin on media requests |
+| Original `hexion.js`, Inception | **0 streams** (file pages now link `*.workers.dev`) |
+| Port `hx.js` through the real `/api/proxy` handler (Node) | Inception 7 streams (2160p/1080p, 6.6-66 GB), Breaking Bad S01E01 4 streams incl. one signed R2 URL |
+| `*.workers.dev` file links, 1 KB range | one `206 video/x-matroska`, `ACAO: *`; six `403` "download quota exceeded" (upstream Google Drive quota) |
+| `pixel.hubcloud.*` link | redirects to an HTML download interstitial, not a file (skipped) |

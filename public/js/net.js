@@ -3,6 +3,8 @@
 //   gateway : your own bdix-gateway (recommended for BDIX hosts)   POST {gateway}/p  (JSON envelope)
 //   edge    : the Pages Function /api/proxy, for public HTTPS hosts that lack CORS (FlixHub)
 //   direct  : straight from the browser (works if the host sends CORS headers and the page may reach it)
+// A provider (or stream) marked `direct: true` always goes straight from the browser, even when a gateway is set:
+// its hosts are public and send CORS headers, so a detour would only add latency (and, for HLS, break relative URLs).
 
 export class NetError extends Error {
   constructor(message, kind = 'network', cause) {
@@ -32,6 +34,7 @@ export function createNet(getCfg, fetchImpl = (...a) => globalThis.fetch(...a), 
   const edgeBase = opts.edgeBase ?? '';
   const mode = (provider) => {
     const c = getCfg();
+    if (provider && provider.direct) return 'direct';
     if (trimSlash(c.gatewayUrl)) return 'gateway';
     if (provider && provider.edge && c.edge !== false) return 'edge';
     return 'direct';
@@ -61,7 +64,7 @@ export function createNet(getCfg, fetchImpl = (...a) => globalThis.fetch(...a), 
   function mediaUrl(stream, { download = false, filename } = {}) {
     const c = getCfg();
     const gw = trimSlash(c.gatewayUrl);
-    if (!gw) return stream.url;
+    if (!gw || stream.direct) return stream.url;
     const p = new URLSearchParams({ u: stream.url });
     if (c.gatewayToken) p.set('k', c.gatewayToken);
     if (stream.headers && Object.keys(stream.headers).length) p.set('h', b64url(JSON.stringify(stream.headers)));

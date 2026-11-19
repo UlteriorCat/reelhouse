@@ -26,6 +26,9 @@ export async function steps3(ctx) {
     const page = await b.newPage({ width: 1280, height: 900, label: 'gateway' });
     try {
       await open(page, '#/movie/603');
+      // with a gateway, FlixHub and Hexion lookups go through it, and the gateway may reach public hosts:
+      // point them at the local mock so this step never touches the real internet
+      await page.evaluate(async (base) => { (await import('/js/providers/fh.js')).endpoints.base = base; (await import('/js/providers/hx.js')).endpoints.base = base; }, bdix.base);
       await waitFor(() => page.$('.dinfo h1'), { what: 'details' });
       await openSettings(page);
       await page.type('input[aria-label="Gateway address"]', gw.url);
@@ -64,10 +67,10 @@ export async function steps3(ctx) {
     try {
       await open(page, '#/movie/603');
       await waitFor(() => page.$('.dinfo h1'), { what: 'details' });
-      await page.evaluate(() => localStorage.setItem('rh:settings', JSON.stringify({ providers: { 'bdix-fh': false } })));
+      await page.evaluate(() => localStorage.setItem('rh:settings', JSON.stringify({ providers: { 'bdix-fh': false, fendrix: false, hexion: false } })));
       bdix.state.down = true;
       await openDownload(page);
-      assert.deepEqual(await page.$$eval('.pstat .chip', (e) => e.map((x) => x.textContent)), ['DhakaFlix: unreachable', 'Circle FTP: unreachable', 'FlixHub: off']);
+      assert.deepEqual(await page.$$eval('.pstat .chip', (e) => e.map((x) => x.textContent)), ['DhakaFlix: unreachable', 'Circle FTP: unreachable', 'FlixHub: off', 'Fendrix: off', 'Hexion: off']);
       assert.match(await text(page, 'dialog.sheet .notice h3'), /Could not reach the BDIX servers/);
       assert.ok(await hasText(page, 'dialog.sheet .notice li', /BDIX-connected network/));
       await shot(page, 'guidance-unreachable');

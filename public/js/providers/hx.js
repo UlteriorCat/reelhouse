@@ -1,187 +1,133 @@
-// Hexion (4kHdHub): public HTTPS site, WordPress-based, with download links via HubCloud.
-// Port of the eclipsia "hexion.js" scraper. Differences from the original:
-//   * title/year/imdbId come from TMDB details the app already has (no extra TMDB call)
-//   * Uses DOMParser for HTML parsing (same pattern as FlixHub)
-//   * Returns makeStream()-shaped objects consistent with Reelhouse's provider contract
-//   * Rich metadata (file size, bitrate, language, codec, HDR) is exposed via the info system
-import { makeStream, describe } from './common.js';
+// Hexion (4kHdHub): WordPress site whose download buttons lead through link wrappers to HubCloud/HubDrive file pages.
+// Port of the eclipsia "hexion.js" scraper (GPL-3.0, see /NOTICE.md). Same search, page matching, link unwrapping
+// (base64 + ROT13) and request order. The original ships a tag scanner because Rhino has no DOM; this uses DOMParser
+// (inert: scripts never run). Differences:
+//   * title, year and IMDb id come from the TMDB details the site already loaded (no extra TMDB call)
+//   * none of these hosts send CORS headers, so lookups go through the edge proxy (or the gateway); the browser
+//     cannot set the Referer/User-Agent the original sends
+//   * DEVIATION (measured Nov 2026): the file pages now link `*.workers.dev` downloads instead of R2/FSL buckets, and
+//     show the size as <i id="size">. The original finds nothing on such pages; this port also accepts them.
+//     `pixel.<hubcloud>` links are skipped: they redirect to an HTML interstitial, not to a file.
+//   * the original's per-resolution/per-host limits and its sort tag are left out: the site ranks every source itself
+import { makeStream, containerOf, unlessAbort } from './common.js';
 
 export const id = 'hexion';
-export const name = '4kHdHub';
+export const name = 'Hexion';
 export const BASE_URL = 'https://4khdhub.one';
-/** All endpoints are public HTTPS — edge proxy is usable. */
-export const edge = true;
+/** Mutable on purpose (tests point it at a mock). */
 export const endpoints = { base: BASE_URL };
+/** Public HTTPS without CORS: the Pages edge proxy (/api/proxy) fetches the pages when no gateway is set. */
+export const edge = true;
+export const group = 'public';
 
-const UA_SESSION = 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Mobile Safari/537.36';
-const UA_PLAY = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36';
-
-// ---- helpers ----
+const HTML = { headers: { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' } };
+const PLAY_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36';
 
 const pad = (n) => (String(n).length < 2 ? '0' + n : String(n));
+const clean = (v) => String(v).replace(/\s+/g, ' ').trim();
 
-function normalize(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/\[[^\]]*\]/g, ' ')
-    .replace(/\b(the|a|an|directors?|cut)\b/g, ' ')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+function parseDoc(html, opts) {
+  const Parser = opts.DOMParser || globalThis.DOMParser;
+  return new Parser().parseFromString(String(html), 'text/html');
 }
+const textAll = (root, sel) => [...root.querySelectorAll(sel)].map((n) => n.textContent).join('');
 
-function titleScore(expected, candidate) {
-  const want = normalize(expected).split(' ').filter(Boolean);
-  const have = new Set(normalize(candidate).split(' ').filter(Boolean));
+/** Strict base64 like the original (throws on bad input), returning a byte string. */
+export function decode64(text) {
+  let s = String(text).replace(/[\t\n\f\r ]/g, '');
+  if (s.length % 4 === 0) s = s.replace(/={1,2}$/, '');
+  if (s.length % 4 === 1 || /[^A-Za-z0-9+/]/.test(s)) throw new Error('base64');
+  return atob(s + '='.repeat((4 - (s.length % 4)) % 4));
+}
+export const rot13 = (v) => String(v).replace(/[a-zA-Z]/g, (c) => { const code = c.charCodeAt(0) + 13; return String.fromCharCode(code <= (c <= 'Z' ? 90 : 122) ? code : code - 26); });
+
+function absolute(href, base) {
+  if (!href) return '';
+  if (/^https?:\/\//i.test(href)) return href;
+  try { return new URL(String(href).replace(/&amp;/g, '&'), base || endpoints.base).href; } catch { return ''; }
+}
+const hostOf = (url) => { try { return new URL(String(url).trim()).hostname.toLowerCase(); } catch { return ''; } };
+
+function normalize(v) {
+  return String(v || '').toLowerCase().replace(/\[[^\]]*]/g, ' ').replace(/\b(the|a|an|directors?|cut)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+const words = (v) => normalize(v).split(' ').filter(Boolean);
+export function titleScore(expected, candidate) {
+  const want = words(expected);
   if (!want.length) return 0;
-  let hits = 0;
-  for (const w of want) if (have.has(w)) hits++;
-  return hits / want.length;
+  const have = new Set(words(candidate));
+  return want.filter((w) => have.has(w)).length / want.length;
 }
 
-function qualityOf(text) {
+export const parseSizeMB = (size) => { const m = /(\d+\.?\d*)\s*(GB|MB)/i.exec(size || ''); return m ? (m[2].toUpperCase() === 'GB' ? parseFloat(m[1]) * 1024 : parseFloat(m[1])) : null; };
+/** '2160p' | '1080p' | '720p' | '480p'; no marker means 1080p, as in the original. */
+export function qualityOf(text) {
   const m = /(2160|1080|720|480)p|(4K|UHD)/i.exec(text);
   if (!m) return '1080p';
   const v = (m[1] || m[2]).toUpperCase();
   return v === '4K' || v === 'UHD' ? '2160p' : v.toLowerCase() + 'p';
 }
+const sizeOf = (text) => { const m = /(?:^|[\s>])(\d+\.?\d*)\s*(GB|MB)\b/i.exec(text); return m ? m[1] + ' ' + m[2] : ''; };
 
-function sizeOf(text) {
-  const m = /(?:^|[\s>])(\d+\.?\d*)\s*(GB|MB)\b/i.exec(text);
-  return m ? m[1] + ' ' + m[2] : '';
+export function searchTerm(meta) {
+  if (meta.type === 'tv' && meta.season) return meta.title + ' Season ' + meta.season;
+  return (meta.title + ' ' + (meta.year || '')).trim();
 }
 
-function parseSizeMB(size) {
-  if (!size) return null;
-  const m = /(\d+\.?\d*)\s*(GB|MB)/i.exec(size);
-  if (!m) return null;
-  return m[2].toUpperCase() === 'GB' ? parseFloat(m[1]) * 1024 : parseFloat(m[1]);
-}
-
-function decode64(text) {
-  try { return atob(text); } catch { return ''; }
-}
-
-function rot13(value) {
-  return String(value).replace(/[a-zA-Z]/g, (c) => {
-    const code = c.charCodeAt(0) + 13;
-    const limit = c <= 'Z' ? 90 : 122;
-    return String.fromCharCode(code <= limit ? code : code - 26);
-  });
-}
-
-function hostOf(url) {
-  try { return new URL(url).hostname.toLowerCase(); } catch { return ''; }
-}
-
-function parseDoc(html, opts) {
-  const Parser = opts.DOMParser || globalThis.DOMParser;
-  return new Parser().parseFromString(html, 'text/html');
-}
-
-// ---- search + page finding ----
-
-function searchTerm(title, year, isTv, season) {
-  if (isTv && season) return title + ' Season ' + season;
-  return (title + ' ' + (year || '')).trim();
-}
-
-function bestCard(html, title, year, isTv, season, opts) {
+export function bestCard(html, meta, opts = {}) {
   if (!html) return null;
-  const doc = parseDoc(html, opts);
-  const cards = doc.querySelectorAll('.movie-card');
+  const isTv = meta.type === 'tv';
   let best = null;
-  let bestScore = -1;
-
-  for (const card of cards) {
-    const titleEl = card.querySelector('.movie-card-title');
-    const formatEl = card.querySelector('.movie-card-format');
-    const cardTitle = titleEl?.textContent?.trim() || '';
-    const format = formatEl?.textContent?.trim() || '';
-    const href = card.getAttribute('href') || card.querySelector('a')?.getAttribute('href') || '';
-    if (!cardTitle || !href) continue;
-
-    if (isTv && !/series/i.test(format)) continue;
-    if (!isTv && !/movies?/i.test(format)) continue;
-
-    const metaEl = card.querySelector('.movie-card-meta');
-    const metaText = metaEl?.textContent || '';
-    const ym = metaText.match(/\b(19|20)\d{2}\b/);
+  for (const card of parseDoc(html, opts).querySelectorAll('.movie-card')) {
+    const title = textAll(card, '.movie-card-title').trim();
+    const format = textAll(card, '.movie-card-format').trim();
+    const firstA = [...card.querySelectorAll('a')].find((a) => a.hasAttribute('href'));
+    const href = card.getAttribute('href') || (firstA ? firstA.getAttribute('href') : '');
+    if (!title || !href) continue;
+    if (isTv ? !/series/i.test(format) : !/movies?/i.test(format)) continue;
+    const ym = textAll(card, '.movie-card-meta').match(/\b(19|20)\d{2}\b/);
     const cardYear = ym ? Number(ym[0]) : null;
-
-    let score = titleScore(title, cardTitle);
-    if (year && cardYear === Number(year)) score += 0.35;
-    else if (year && cardYear && Math.abs(cardYear - Number(year)) > 1) score -= 0.5;
-
-    if (isTv && season) {
-      const sm = cardTitle.match(/(?:season\s*|s)(\d+)/i);
-      if (sm && Number(sm[1]) === Number(season)) score += 0.4;
+    let score = titleScore(meta.title, title);
+    if (meta.year && cardYear === Number(meta.year)) score += 0.35;
+    else if (meta.year && cardYear && Math.abs(cardYear - Number(meta.year)) > 1) score -= 0.5;
+    if (isTv && meta.season) {
+      const sm = title.match(/(?:season\s*|s)(\d+)/i);
+      if (sm && Number(sm[1]) === Number(meta.season)) score += 0.4;
       else if (sm) score -= 0.6;
     }
-
-    const link = href.startsWith('http') ? href : endpoints.base + href;
-    if (!best || score > bestScore) {
-      best = { url: link, score };
-      bestScore = score;
-    }
+    const url = absolute(href, endpoints.base);
+    if (!best || score > best.score) best = { url, score };
   }
-
   return best && best.score >= 0.5 ? best.url : null;
 }
 
 async function findPage(ctx, meta, opts) {
-  // Try IMDB-based WP API search first
-  if (meta.imdbId) {
-    try {
-      const posts = await ctx.json(endpoints.base + '/wp-json/wp/v2/posts?search=' + encodeURIComponent(meta.imdbId));
-      if (posts && posts.length > 0 && posts[0]?.link) return posts[0].link;
-    } catch { /* fall through */ }
-  }
-
-  // HTML search
-  const term = searchTerm(meta.title, meta.year, meta.type === 'tv', meta.season);
-  const html = await ctx.text(endpoints.base + '/?s=' + encodeURIComponent(term), {
-    headers: { Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' },
-  });
-  return bestCard(html, meta.title, meta.year, meta.type === 'tv', meta.season, opts);
+  // Both in parallel, like the original: the WordPress API by IMDb id wins, the HTML search is the fallback.
+  const [posts, html] = await Promise.all([
+    meta.imdbId ? ctx.json(endpoints.base + '/wp-json/wp/v2/posts?search=' + encodeURIComponent(meta.imdbId)) : null,
+    ctx.text(endpoints.base + '/?s=' + encodeURIComponent(searchTerm(meta)), HTML),
+  ]);
+  if (Array.isArray(posts) && posts.length && posts[0] != null) return posts[0].link || null;
+  return bestCard(html, meta, opts);
 }
 
-// ---- page parsing: items + download links ----
+const linksOf = (el) => [...el.querySelectorAll('a[href]')].map((a) => ({ href: a.getAttribute('href'), text: a.textContent }));
 
-function itemsOf(doc, meta) {
+export function itemsOf(html, meta, opts = {}) {
+  const doc = parseDoc(html, opts);
+  if (meta.type !== 'tv') return [...doc.querySelectorAll('.download-item')].map((d) => ({ links: linksOf(d), context: d.textContent }));
+  const code = 'S' + pad(Number(meta.season));
+  const mark = 'Episode-' + pad(Number(meta.episode));
   const items = [];
-  if (meta.type === 'tv') {
-    const code = 'S' + pad(Number(meta.season));
-    const mark = 'Episode-' + pad(Number(meta.episode));
-    for (const section of doc.querySelectorAll('.episode-item')) {
-      const titleEl = section.querySelector('.episode-title');
-      if (!titleEl || !titleEl.textContent.includes(code)) continue;
-      for (const dl of section.querySelectorAll('.episode-download-item')) {
-        const text = dl.textContent;
-        if (text.includes(mark)) {
-          const links = [...dl.querySelectorAll('a[href]')].map((a) => ({
-            href: a.getAttribute('href'),
-            text: a.textContent,
-          }));
-          items.push({ links, context: text });
-        }
-      }
-    }
-  } else {
-    for (const dl of doc.querySelectorAll('.download-item')) {
-      const links = [...dl.querySelectorAll('a[href]')].map((a) => ({
-        href: a.getAttribute('href'),
-        text: a.textContent,
-      }));
-      items.push({ links, context: dl.textContent });
-    }
+  for (const section of doc.querySelectorAll('.episode-item')) {
+    if (!textAll(section, '.episode-title').includes(code)) continue;
+    for (const d of section.querySelectorAll('.episode-download-item')) if (d.textContent.includes(mark)) items.push({ links: linksOf(d), context: d.textContent });
   }
   return items;
 }
 
-// ---- HubCloud unwrapping ----
-
-function unwrapPayload(html) {
+/** The wrapper page hides the target as base64(rot13(base64(base64(json)))) with the URL itself base64 in `o`. */
+export function unwrapPayload(html) {
   try {
     const m = /['"]o['"]\s*,\s*['"]([^'"]+)['"]/.exec(html);
     if (!m) return null;
@@ -192,179 +138,112 @@ function unwrapPayload(html) {
 
 async function unwrap(ctx, url) {
   if (/hubcloud|hubdrive/i.test(url)) return url;
-  const html = await ctx.text(url);
-  if (!html) return url;
-  const unwrapped = unwrapPayload(html);
-  return unwrapped || url;
+  const html = await ctx.text(url, HTML);
+  return (html && unwrapPayload(html)) || url;
 }
 
 function cloudOnPage(html, base, opts) {
   if (!html) return '';
-  try {
-    const doc = parseDoc(html, opts);
-    for (const a of doc.querySelectorAll('a[href]')) {
-      const href = a.getAttribute('href');
-      const text = a.textContent;
-      if (/hubcloud/i.test(text + ' ' + href)) {
-        return href.startsWith('http') ? href : (href.startsWith('/') ? new URL(href, base).href : href);
-      }
-    }
-  } catch { /* ignore */ }
+  for (const a of parseDoc(html, opts).querySelectorAll('a[href]')) {
+    const href = a.getAttribute('href');
+    if (/hubcloud/i.test(a.textContent + ' ' + href)) return href ? absolute(href, base) : '';
+  }
   return '';
 }
 
 async function probe(ctx, link, pageUrl, opts) {
-  if (!link.href) return { stop: false, url: '' };
-  const abs = link.href.startsWith('http') ? link.href : new URL(link.href, pageUrl).href;
-
-  if (/hubcloud/i.test(link.text) || /hubcloud/i.test(link.href)) {
-    const url = await unwrap(ctx, abs);
-    return { stop: true, url };
-  }
+  const abs = link.href ? absolute(link.href, pageUrl) : '';
+  if (!abs) return { stop: false, url: '' };
+  if (/hubcloud/i.test(link.text) || /hubcloud/i.test(link.href)) return { stop: true, url: await unwrap(ctx, abs) };
   if (/hubdrive/i.test(link.text) || /hubdrive/i.test(link.href)) {
     const drive = await unwrap(ctx, abs);
-    const html = await ctx.text(drive);
-    return { stop: false, url: cloudOnPage(html, drive, opts) };
+    return { stop: false, url: cloudOnPage(await ctx.text(drive, HTML), drive, opts) };
   }
   return { stop: false, url: '' };
 }
 
 async function findCloud(ctx, links, pageUrl, opts) {
-  const results = await Promise.all(links.map((l) => probe(ctx, l, pageUrl, opts).catch(() => ({ stop: false, url: '' }))));
-  for (const r of results) {
-    if (r.stop || r.url) return r.url;
-  }
-  return '';
+  const found = await Promise.all(links.map((l) => probe(ctx, l, pageUrl, opts).catch(unlessAbort({ stop: false, url: '' }))));
+  const hit = found.find((f) => f.stop || f.url);
+  return hit ? hit.url : '';
 }
 
-// ---- HubCloud page → download links ----
-
-function redirectOf(html) {
+export function redirectOf(html) {
   const m = /var\s+url\s*=\s*['"]([^'"]+)['"]/.exec(html)
     || /id=["']download["'][^>]*href=["']([^'"]+)["']/i.exec(html)
     || /href=["']([^'"]+)["'][^>]*id=["']download["']/i.exec(html);
   return m ? m[1] : '';
 }
 
-function collectStreams(html, pageUrl, quality, size, runtime) {
+const FSL_V2 = /\.r2\.cloudflarestorage\.com$|\.r2\.dev$|^cdn\.fsl-buckets\.life$|\.fsl-buckets\.life$/;
+const WORKERS = /\.workers\.dev$/; // deviation, see header
+
+/** File page -> direct links. Returns [{url, host, filename, size}]. */
+export function collect(html, opts = {}, size = '') {
   const out = [];
-  if (!html) return out;
-  try {
-    const headMatch = html.match(/<div[^>]*class="card-header"[^>]*>([\s\S]*?)<\/div>/i);
-    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-    let head = headMatch ? headMatch[1].replace(/<[^>]+>/g, '').trim() : '';
-    if (!head) head = titleMatch ? titleMatch[1].trim() : '';
-    const filename = head.replace(/\.(mkv|mp4|avi|rar|zip)$/i, '');
-
-    // Extract file size from the page if not already known
-    const sizeMatch = /<td[^>]*>\s*File\s*Size\s*:\s*<\/td>\s*<td[^>]*>\s*([\d.]+\s*[MGBtbi]+)\s*<\/td>/i.exec(html)
-      || /Size\s*:\s*<\/strong>\s*([\d.]+\s*[MGBtbi]+)/i.exec(html);
-    if (sizeMatch) size = sizeMatch[1].trim();
-
-    // Find R2/FSL/PixelDrain links
-    const hrefRe = /href=["']([^"']+)["']/gi;
-    let hm;
-    while ((hm = hrefRe.exec(html)) !== null) {
-      const href = hm[1].replace(/&amp;/g, '&');
-      if (/\.zip|\.rar/.test(href)) continue;
-      const host = hostOf(href);
-      if (!host) continue;
-      if (/\.r2\.cloudflarestorage\.com$|\.r2\.dev$|^cdn\.fsl-buckets\.life$|\.fsl-buckets\.life$/.test(host)) {
-        if (!out.some((e) => e.url === href)) {
-          out.push({ url: href, filename, host: 'FSL-v2', quality, size, runtime });
-        }
-      }
-    }
-
-    // Check for PixelDrain
-    const pxl = /var\s+pxl\s*=\s*["']https?:\/\/pixeldrain\.[a-z0-9.-]+\/u\/([A-Za-z0-9_-]+)["']/i.exec(html)
-      || /href=["']https?:\/\/pixeldrain\.[a-z0-9.-]+\/u\/([A-Za-z0-9_-]+)["']/i.exec(html);
-    if (pxl?.[1]) {
-      const drain = 'https://pixeldrain.com/api/file/' + pxl[1];
-      if (!out.some((e) => e.url === drain)) {
-        out.push({ url: drain, filename, host: 'PixelDrain', quality, size, runtime });
-      }
-    }
-  } catch { /* ignore */ }
+  const doc = parseDoc(html, opts);
+  let head = clean(textAll(doc, 'div.card-header'));
+  if (!head) head = textAll(doc, 'title').trim();
+  // the original strips the extension for display; keep it: it is the only format hint for signed R2 URLs
+  const filename = head;
+  const found = /<td[^>]*>\s*File\s*Size\s*:\s*<\/td>\s*<td[^>]*>\s*([\d.]+\s*[MGBtbi]+)\s*<\/td>/i.exec(html)
+    || /Size\s*:\s*<\/strong>\s*([\d.]+\s*[MGBtbi]+)/i.exec(html)
+    || /id=["']size["'][^>]*>\s*([\d.]+\s*[MGBtbi]+)\s*</i.exec(html); // deviation: current layout
+  if (found) size = found[1].trim();
+  const add = (url, host) => { if (!out.some((e) => e.url === url)) out.push({ url, host, filename, size }); };
+  for (const a of doc.querySelectorAll('a[href]')) {
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('javascript:')) continue;
+    const abs = href.replace(/&amp;/g, '&');
+    if (/\.zip|\.rar/.test(abs)) continue;
+    const host = hostOf(abs);
+    if (FSL_V2.test(host)) add(abs, 'FSL-v2');
+    else if (WORKERS.test(host)) add(abs, 'FSL');
+  }
+  const pxl = /var\s+pxl\s*=\s*["']https?:\/\/pixeldrain\.[a-z0-9.-]+\/u\/([A-Za-z0-9_-]+)["']/i.exec(html)
+    || /href=["']https?:\/\/pixeldrain\.[a-z0-9.-]+\/u\/([A-Za-z0-9_-]+)["']/i.exec(html);
+  if (pxl && pxl[1]) add('https://pixeldrain.com/api/file/' + pxl[1], 'PixelDrain');
   return out;
 }
 
-async function hubStreams(ctx, cloudUrl, quality, size, runtime) {
-  const html = await ctx.text(cloudUrl, { headers: { Referer: endpoints.base + '/' } });
+async function hubStreams(ctx, cloudUrl, size, opts) {
+  const html = await ctx.text(cloudUrl, HTML);
   if (!html) return [];
   const redirect = redirectOf(html);
-  if (!redirect) return collectStreams(html, cloudUrl, quality, size, runtime);
-  const next = redirect.startsWith('http') ? redirect : new URL(redirect.replace(/&amp;/g, '&'), cloudUrl).href;
-  const page = await ctx.text(next, { headers: { Referer: cloudUrl } });
-  return page ? collectStreams(page, next, quality, size, runtime) : [];
+  if (!redirect) return collect(html, opts, size);
+  const next = absolute(redirect.replace(/&amp;/g, '&'), cloudUrl);
+  const page = next ? await ctx.text(next, HTML) : null;
+  return page ? collect(page, opts, size) : [];
 }
 
-async function resolveItem(ctx, item, pageUrl, runtime) {
-  const text = item.context.replace(/\s+/g, ' ').trim();
+async function resolveItem(ctx, item, pageUrl, opts) {
+  const text = clean(item.context);
   const quality = qualityOf(text);
   if (quality === '480p') return [];
-  const size = sizeOf(text);
-  const cloud = await findCloud(ctx, item.links, pageUrl, {});
-  return cloud ? hubStreams(ctx, cloud, quality, size, runtime) : [];
+  const cloud = await findCloud(ctx, item.links, pageUrl, opts);
+  const files = cloud ? await hubStreams(ctx, cloud, sizeOf(text), opts) : [];
+  return files.map((f) => ({ ...f, quality }));
 }
 
-async function gather(ctx, pageUrl, meta, runtime) {
-  const html = await ctx.text(pageUrl, {
-    headers: { Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' },
-  });
-  if (!html) return [];
-  const doc = parseDoc(html, {});
-  const items = itemsOf(doc, meta);
-  const groups = await Promise.all(items.map((item) => resolveItem(ctx, item, pageUrl, runtime)));
-  return groups.flat();
-}
-
-// ---- ranking ----
-
-function resWeight(q) {
-  if (q === '2160p') return 4;
-  if (q === '1080p') return 3;
-  if (q === '720p') return 2;
-  return 1;
-}
-
-// ---- main search ----
+const resWeight = (q) => (q === '2160p' ? 4 : q === '1080p' ? 3 : q === '720p' ? 2 : 1);
 
 export async function search(meta, ctx, opts = {}) {
-  if (!meta.title) return [];
-  if (meta.type !== 'movie' && meta.type !== 'tv') return [];
+  if (!meta.title || !/^\d+$/.test(String(meta.tmdbId ?? '')) || (meta.type !== 'movie' && meta.type !== 'tv')) return [];
   if (meta.type === 'tv' && (meta.season == null || meta.episode == null)) return [];
-
   const pageUrl = await findPage(ctx, meta, opts);
   if (!pageUrl) return [];
-
-  const runtime = null; // We don't have runtime from meta; it's display-only anyway
-  const entries = await gather(ctx, pageUrl, meta, runtime);
-  if (!entries.length) return [];
-
-  // Deduplicate by URL
+  const html = await ctx.text(pageUrl, HTML);
+  if (!html) return [];
+  const groups = await Promise.all(itemsOf(html, meta, opts).map((it) => resolveItem(ctx, it, pageUrl, opts).catch(unlessAbort([]))));
   const seen = new Set();
-  const unique = [];
-  for (const e of entries) {
-    if (seen.has(e.url)) continue;
-    seen.add(e.url);
-    unique.push(e);
-  }
-
-  // Sort by resolution then size
-  unique.sort((a, b) => resWeight(b.quality) - resWeight(a.quality) || (b.size ? parseSizeMB(b.size) || 0 : 0) - (a.size ? parseSizeMB(a.size) || 0 : 0));
-
-  // Convert to Reelhouse's makeStream format
-  return unique.map((e) => {
-    const stream = makeStream({
-      provider: id,
-      providerName: `${name} • ${e.host}`,
-      url: e.url,
-      quality: e.quality,
-      filename: e.filename,
-      headers: { 'User-Agent': UA_PLAY, Referer: endpoints.base + '/' },
-    });
-    // Attach size metadata for display
+  const entries = groups.flat().map((e, i) => ({ ...e, i, mb: parseSizeMB(e.size) || 0 })).filter((e) => (seen.has(e.url) ? false : (seen.add(e.url), true)));
+  entries.sort((a, b) => resWeight(b.quality) - resWeight(a.quality) || b.mb - a.mb || a.i - b.i);
+  return entries.map((e) => {
+    const url = e.url.replace(/ /g, '%20');
+    const filename = e.filename || undefined;
+    const container = containerOf(url) === 'unknown' && filename ? containerOf('x:/' + filename) : undefined;
+    const stream = makeStream({ provider: id, providerName: `${name} (${e.host})`, url, quality: e.quality, filename, container, headers: { 'User-Agent': PLAY_UA, Referer: endpoints.base + '/' } });
+    stream.direct = true; // the file hosts allow any origin and need no Referer (measured); never detour video through a proxy
     if (e.size) stream.sizeLabel = e.size;
     return stream;
   });

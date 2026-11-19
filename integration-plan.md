@@ -1,3 +1,9 @@
+> **Status (Nov 2026): superseded.** This was the pre-implementation plan. Live measurements changed several of its
+> assumptions: Fendrix is called **directly** from the browser (its API sends CORS headers), not through the edge proxy,
+> and its hosts were removed from `EDGE_PROXY_HOSTS`; its HLS plays only through built-in HLS; Hexion's link chain now
+> runs through other domains and needed a documented deviation. The current design, deviations and test evidence are
+> in `docs/IMPLEMENTATION.md` section 6 and `VERIFICATION.md` sections 5 and 18.
+
 # Fendrix + Hexion Provider Integration Plan
 
 ## Analysis Summary

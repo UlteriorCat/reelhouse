@@ -19,6 +19,8 @@ export function browserCaps(video = typeof document !== 'undefined' ? document.c
     ac3: can('audio/mp4; codecs="ac-3"'),
     eac3: can('audio/mp4; codecs="ec-3"'),
     mkv: !(ios || safari), // Safari/iOS cannot open Matroska
+    // built-in HLS (Safari, iOS, Chrome 142+): media-element requests carry no Origin header, which some CDNs require
+    nativeHls: can('application/vnd.apple.mpegurl'),
     platform: /Android/i.test(ua) ? 'android' : ios ? 'ios' : 'desktop',
   };
 }
@@ -33,6 +35,8 @@ export function playability(stream, caps) {
   if (stream.container === 'mkv' && !caps.mkv) bump('bad', 'This browser cannot open MKV files');
   if (info.video === 'hevc' && !caps.hevc) bump('bad', 'HEVC (H.265) video is not supported by this browser');
   if (info.video === 'xvid') bump('bad', 'XviD video is not supported by browsers');
+  if (stream.needsNativeHls && !caps.nativeHls) bump('bad', 'This server only plays in browsers with built-in HLS (Chrome 142+, Edge, Safari) or in an external player');
+  if (info.video === 'vc1') bump('bad', 'VC-1 video is not supported by browsers');
   if (info.video === 'av1' && !caps.av1) bump('bad', 'AV1 video is not supported by this browser');
   const audio = info.audio || [];
   if (audio.length) {

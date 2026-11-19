@@ -75,3 +75,15 @@ export function vttBlobUrl(text) {
   if (!countCues(vtt)) throw new Error('This subtitle file has no readable cues.');
   return URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
 }
+
+/** Subtitle that came with a source (e.g. Fendrix captions): fetched straight from its host, which must allow CORS. */
+export async function loadSourceSubtitle(url, signal, fetchImpl = (...a) => globalThis.fetch(...a)) {
+  if (!/^https?:\/\//i.test(String(url))) throw new Error('Invalid subtitle address.');
+  let res;
+  try { res = await fetchImpl(url, { signal, referrerPolicy: 'no-referrer', credentials: 'omit' }); } catch (e) {
+    if (e && e.name === 'AbortError') throw e;
+    throw new Error('The source’s subtitle server does not allow downloads from a website. Try a subtitle search instead.');
+  }
+  if (!res.ok) throw new Error(`Subtitle download failed (${res.status})`);
+  return vttBlobUrl(decodeBytes(await res.arrayBuffer()));
+}

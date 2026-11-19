@@ -42,8 +42,10 @@ So there are three connection modes (Settings → Connection):
 | Mode | When it works | Setup |
 |---|---|---|
 | **Direct** (default) | The BDIX server sends CORS headers and the browser allows the request. Chrome/Edge 142+ ask for "local network" permission for private IPs such as `172.16.x.x`; Firefox and Safari block http from https. Public-looking hosts (`new.circleftp.net:5000`, `15.1.1.50`) are blocked from an https page. | none |
-| **Edge proxy** (automatic for FlixHub) | FlixHub is a public https site; the Pages Function fetches it for you. Only hosts in `EDGE_PROXY_HOSTS` are allowed. | none |
+| **Edge proxy** (automatic for FlixHub and Hexion) | Public https sites without CORS; the Pages Function fetches the pages for you. Only the exact hosts in `EDGE_PROXY_HOSTS` are allowed (default in `lib/api.js`: FlixHub and the Hexion/4kHdHub link chain). | none; if Hexion starts showing "server error", its link domains moved: add the new ones to `EDGE_PROXY_HOSTS` |
 | **Gateway** (recommended for BDIX) | Always, if the machine running it is on BDIX. Sets `Referer`/`User-Agent`, adds CORS, streams video with Range support, forces real downloads. | run `node gateway/bdix-gateway.mjs` (below) |
+
+**Online sources (no BDIX needed).** *Fendrix* (Cinejoy/Shegu) is called straight from your browser, never through the gateway; its videos are HLS from a server that refuses in-page players, so they play in browsers with built-in HLS (Chrome/Edge 142+, Safari, iPhone/iPad) or in an external player (VLC, MX Player via the source's *More* menu). *Hexion* (4kHdHub) is looked up through the edge proxy (or your gateway); its files are large releases, often with Dolby (DD+/DTS) audio that browsers play silently: the app warns and offers the external players. Both can be switched off in Settings → Sources.
 
 The app tells you which situation you are in: **Settings → Test connection** reports each host as *reachable*, *reachable but blocked by CORS*, *unreachable*, *gateway token rejected* or *blocked by the gateway*.
 
@@ -149,9 +151,9 @@ Traffic caveat: through the gateway, video flows *server → gateway → your de
 | Command | What it does |
 |---|---|
 | `npm run dev` | Local server (static + API + `_headers`) |
-| `npm test` | 70 unit and integration tests (server layer, gateway, providers vs. golden output, client logic, router, API client, branding) |
+| `npm test` | 90 unit and integration tests (server layer, gateway, providers vs. golden output, client logic, router, API client, branding) |
 | `npm run e2e:media` | Generates the small test videos (needs `ffmpeg`) |
-| `npm run e2e` | 25 browser end-to-end steps in headless Chromium (real gateway, mock BDIX server, real videos). Add a word to run matching steps only: `npm run e2e -- subtitles` |
+| `npm run e2e` | 28 browser end-to-end steps in headless Chromium (real gateway, mock BDIX server, real videos). Add a word to run matching steps only: `npm run e2e -- subtitles` |
 | `npm run smoke:cf` | Runs the real Cloudflare runtime (`wrangler pages dev` / workerd) against a mock TMDB: 8 Cloudflare runtime checks of the Function, routing and headers |
 | `npm run rebrand` | Syncs `index.html` and the web manifest with `public/js/brand.js` after you change the name or colour |
 | `npm run check:docs` | Checks that the documentation still matches the code (paths, scripts, counts, versions, env vars) |
@@ -166,7 +168,7 @@ The E2E run launches Chromium from the `@sparticuz/chromium` package with its se
 
 ```
 public/            deployed as-is: index.html, css/, js/ (ES modules), vendor/ (player, font)
-  js/providers/    browser port of the three BDIX scrapers (+ shared parsing)
+  js/providers/    browser port of the eclipsia scrapers: DhakaFlix, Circle FTP, FlixHub, Fendrix, Hexion (+ shared parsing)
   js/ui/           views: home, details, watch, sources sheet, settings, browse
 functions/api/     the single Pages Function: all of /api/*
 lib/               API router, TMDB client, subtitle service (shared by Function, dev server, tests)

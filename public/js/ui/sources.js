@@ -35,26 +35,36 @@ export function providerChips(status) {
 
 export function openSettingsEvent() { document.dispatchEvent(new CustomEvent('rh:settings')); }
 
-/** Explains an empty result in terms the user can act on. */
+/** Explains an empty result in terms the user can act on. BDIX servers and online sources fail for different
+ * reasons (network vs. the site itself), so each group is judged on its own. */
 export function guidance(status, meta, { retry } = {}) {
-  const states = Object.values(status);
-  const active = states.filter((s) => s.state !== 'cancelled');
+  const active = Object.values(status).filter((s) => s.state !== 'cancelled');
   const gw = !!store.settings().gatewayUrl;
-  const allDown = active.length && active.every((s) => s.state === 'unreachable' || s.state === 'timeout');
+  const asked = (group) => PROVIDERS.filter((p) => (p.group === 'bdix') === (group === 'bdix') && status[p.id] && status[p.id].state !== 'cancelled').map((p) => status[p.id].state);
+  const bdix = asked('bdix');
+  const online = asked('public');
+  const down = (st) => st === 'unreachable' || st === 'timeout';
+  const bdixDown = bdix.length > 0 && bdix.every(down);
+  const onlineDown = online.length > 0 && online.every((st) => down(st) || st === 'error');
   const btns = h('div', { class: 'actions' },
     retry ? h('button', { class: 'btn small', type: 'button', onClick: retry }, 'Try again') : null,
     h('button', { class: 'btn small', type: 'button', onClick: openSettingsEvent }, 'Connection settings'));
   if (!active.length) return h('div', { class: 'notice' }, h('h3', null, 'All sources are switched off'), h('p', null, 'Turn at least one source on in Settings.'), btns);
-  if (allDown) {
-    return h('div', { class: 'notice warn' }, h('h3', null, gw ? 'The gateway could not reach the sources' : 'Could not reach the BDIX servers'),
-      gw ? h('ul', null, h('li', null, 'Is the gateway still running and reachable from this device?'), h('li', null, 'Is this device\u2019s network (or the gateway\u2019s) connected to BDIX?'), h('li', null, 'Check the gateway address and token in Connection settings.'))
+  const onlineHint = onlineDown ? h('li', null, 'The online sources did not answer either: check this device\u2019s internet connection, or try again later.') : null;
+  if (bdixDown) {
+    return h('div', { class: 'notice warn' }, h('h3', null, gw ? 'The gateway could not reach the BDIX servers' : 'Could not reach the BDIX servers'),
+      gw ? h('ul', null, h('li', null, 'Is the gateway still running and reachable from this device?'), h('li', null, 'Is this device\u2019s network (or the gateway\u2019s) connected to BDIX?'), h('li', null, 'Check the gateway address and token in Connection settings.'), onlineHint)
         : h('ul', null,
           h('li', null, 'You need to be on a BDIX-connected network (the servers are not on the public internet).'),
           h('li', null, 'Browsers block plain-http servers from an https site. Chrome/Edge ask for \u201clocal network\u201d permission for private addresses; Firefox/Safari do not allow it.'),
-          h('li', null, 'The most reliable fix is the small gateway app (see Connection settings).')),
+          h('li', null, 'The most reliable fix is the small gateway app (see Connection settings).'), onlineHint),
       btns);
   }
-  if (active.every((s) => s.state === 'empty' || s.state === 'unreachable' || s.state === 'timeout' || s.state === 'error')) {
+  if (onlineDown && !bdix.length) {
+    return h('div', { class: 'notice warn' }, h('h3', null, 'Could not reach the online sources'),
+      h('ul', null, h('li', null, 'Check this device\u2019s internet connection.'), h('li', null, 'The sources may be down or may have moved; try again later.')), btns);
+  }
+  if (active.every((s) => s.state === 'empty' || down(s.state) || s.state === 'error')) {
     return h('div', { class: 'notice' }, h('h3', null, 'No matching files found'), h('p', null, `Nothing on the connected servers matches \u201c${meta.title}${meta.year ? ` (${meta.year})` : ''}\u201d${meta.type === 'tv' ? ` S${meta.season} E${meta.episode}` : ''}. Some servers may be unreachable (see above).`), btns);
   }
   return null;
@@ -65,7 +75,7 @@ const copy = (text) => copyText(text).then((ok) => (ok ? toast('Link copied') : 
 function ticket(stream, { mode, title, onPlay, selectedId, first }) {
   const q = stream.quality && stream.quality !== 'Unknown' && stream.quality !== 'auto' ? stream.quality : 'Auto';
   const info = stream.info || {};
-  const tags = [info.source, info.hdr, info.dv ? 'Dolby Vision' : '', info.codecLabel, info.audioLabel, info.tenBit ? '10-bit' : '', info.imax ? 'IMAX' : '', ...(info.langs || [])].filter(Boolean);
+  const tags = [stream.sizeLabel, info.source, info.hdr, info.dv ? 'Dolby Vision' : '', info.codecLabel, info.audioLabel, info.tenBit ? '10-bit' : '', info.imax ? 'IMAX' : '', ...(info.langs || [])].filter(Boolean);
   const play = stream.play || { level: 'ok', reasons: [] };
   const name = filenameFor(stream, title);
   const platform = caps().platform;

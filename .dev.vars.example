@@ -4,7 +4,8 @@ TMDB_API_KEY=your_tmdb_v3_key_or_v4_read_token
 OPENSUBTITLES_API_KEY=
 OPENSUBTITLES_USERNAME=
 OPENSUBTITLES_PASSWORD=
-# Optional: comma-separated public hosts the /api/proxy edge route may fetch (default: flixhub.net,www.flixhub.net)
-# EDGE_PROXY_HOSTS=flixhub.net,www.flixhub.net
+# Optional: comma-separated public hosts the /api/proxy edge route may fetch. Replaces the default list
+# (FlixHub + the Hexion/4kHdHub link chain, see DEFAULT_EDGE_PROXY_HOSTS in lib/api.js), so repeat every host you need.
+# EDGE_PROXY_HOSTS=flixhub.net,www.flixhub.net,4khdhub.one,www.4khdhub.one,greenmotors.club,hubdrive.blog,hubcloud.mov,gamerxyt.com
 # Optional: product name sent as the OpenSubtitles User-Agent. Set it to match the consumer you registered at opensubtitles.com.
 # APP_NAME=Reelhouse

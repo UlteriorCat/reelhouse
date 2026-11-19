@@ -85,7 +85,7 @@ test('one provider failing/timing out does not affect the others; disabled provi
   assert.equal(r.status['bdix-df'].state, 'ok');
   assert.ok(progress.includes('bdix-fh:done') && progress.includes('bdix-df:start'));
   const g = fakeFetch(df.handler);
-  await resolveStreams(df.meta, { net: netFor(g), enabled: { 'bdix-df': false, 'bdix-cf': false, 'bdix-fh': false } });
+  await resolveStreams(df.meta, { net: netFor(g), enabled: Object.fromEntries(PROVIDERS.map((p) => [p.id, false])) });
   assert.equal(g.calls.length, 0, 'nothing is requested when all providers are disabled');
 });
 

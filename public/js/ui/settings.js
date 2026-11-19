@@ -6,6 +6,8 @@ import { PROVIDERS } from '../providers/index.js';
 import { SERVERS } from '../providers/df.js';
 import { endpoints as cfEndpoints } from '../providers/cf.js';
 import { endpoints as fhEndpoints, edge as FH_EDGE } from '../providers/fh.js';
+import * as fendrix from '../providers/fn.js';
+import * as hexion from '../providers/hx.js';
 import { SUB_LANGS, langName, subtitleStyle, SUB_COLORS } from '../subs.js';
 import { openSheet, toast } from './components.js';
 
@@ -41,11 +43,13 @@ export function openSettings() {
         ['Circle FTP', cfEndpoints.primary + '/', null],
         ['Circle FTP (fallback)', cfEndpoints.fallback + '/', null],
         ['FlixHub', fhEndpoints.base + '/', { edge: true }],
+        ['Fendrix', fendrix.API_BASE[0] + '/', fendrix],
+        ['Hexion', hexion.endpoints.base + '/', hexion],
       ];
       mount(diag, targets.map(([name]) => h('div', { dataset: { host: name } }, h('span', null, name), h('span', null, 'testing\u2026'))));
       await Promise.all(targets.map(async ([name, url, provider], i) => {
         let state;
-        if (name === 'Gateway') { try { const r = await fetch(url); state = r.ok ? 'ok' : 'unreachable'; } catch { state = 'unreachable'; } } else if (provider && !gwOn) {
+        if (name === 'Gateway') { try { const r = await fetch(url); state = r.ok ? 'ok' : 'unreachable'; } catch { state = 'unreachable'; } } else if (provider && (provider.direct || !gwOn)) {
           try { const r = await net.request(url, { provider, timeoutMs: 8000 }); state = r.ok ? 'ok' : 'unreachable'; } catch { state = 'unreachable'; }
         } else state = await net.diagnose(url);
         const [text, cls] = DIAG_TEXT[state];
@@ -56,7 +60,7 @@ export function openSettings() {
     };
     const connection = h('section', { class: 'set-group' },
       h('h3', null, 'Connection to BDIX servers'),
-      h('p', { style: { color: 'var(--dim)', fontSize: '14px' } }, mode === 'gateway' ? 'Requests go through your gateway.' : 'Requests go straight from this browser (FlixHub via the site\u2019s edge proxy). Browsers often block this for BDIX servers; the gateway fixes that.'),
+      h('p', { style: { color: 'var(--dim)', fontSize: '14px' } }, mode === 'gateway' ? 'Requests go through your gateway (Fendrix still connects directly: it does not need it).' : 'Requests go straight from this browser (FlixHub and Hexion via the site\u2019s edge proxy). Browsers often block this for BDIX servers; the gateway fixes that. Fendrix always connects directly.'),
       h('div', { class: 'stack', style: { marginTop: '10px' } }, gw, tok,
         h('div', { class: 'actions', style: { marginTop: 0 } }, h('button', { class: 'btn small primary', type: 'button', onClick: save }, 'Save'), h('button', { class: 'btn small', type: 'button', onClick: test }, 'Test connection'))),
       diag,
@@ -68,7 +72,7 @@ export function openSettings() {
 
     // ----- sources -----
     const sources = h('section', { class: 'set-group' }, h('h3', null, 'Sources'),
-      ...PROVIDERS.map((p) => toggleRow(p.name, null, s.providers[p.id] !== false, (v) => { store.saveSettings({ providers: { [p.id]: v } }); })),
+      ...PROVIDERS.map((p) => toggleRow(p.name, p.group === 'bdix' ? 'BDIX server: needs a BDIX network' : 'Online source: works on any internet connection', s.providers[p.id] !== false, (v) => { store.saveSettings({ providers: { [p.id]: v } }); })),
       toggleRow('Original file types only', 'Off also lists .mov, .m4v and .webm files from DhakaFlix.', s.compat, (v) => store.saveSettings({ compat: v })));
 
     // ----- playback -----

@@ -1,4 +1,4 @@
-// Shared helpers for the BDIX providers.
+// Shared helpers for the providers (BDIX servers and the public-internet sources).
 // The providers in this folder are a browser port of the "eclipsia-bdix" CloudStream scrapers
 // (https://gitea.com/eclipsia/cloudstream, GPL-3.0). See /NOTICE.md and /LICENSE.
 
@@ -38,7 +38,7 @@ const AUDIO_LABELS = [
  */
 export function describe(filename, url = '') {
   const s = `${filename} ${url}`.toLowerCase();
-  const video = /\b(?:hevc|x265|h\.?265|265)\b/.test(s) ? 'hevc' : /\bav1\b/.test(s) ? 'av1' : /\b(?:xvid|divx)\b/.test(s) ? 'xvid' : /\bvp9\b/.test(s) ? 'vp9' : /\b(?:x264|h\.?264|avc)\b/.test(s) ? 'avc' : '';
+  const video = /\b(?:hevc|x265|h\.?265|265)\b/.test(s) ? 'hevc' : /\bav1\b/.test(s) ? 'av1' : /\b(?:xvid|divx)\b/.test(s) ? 'xvid' : /\bvc-?1\b/.test(s) ? 'vc1' : /\bvp9\b/.test(s) ? 'vp9' : /\b(?:x264|h\.?264|avc)\b/.test(s) ? 'avc' : '';
   const audio = new Set();
   if (/\b(?:ddp|dd\+|eac3|e-ac-3)/.test(s) || /ddp.?\d/.test(s)) audio.add('eac3');
   if (!audio.has('eac3') && (/\b(?:dd|ac3|ac-3)\b|\bdd.?[257]\.?[01]\b|dolby digital/.test(s))) audio.add('ac3');
@@ -64,13 +64,18 @@ export function describe(filename, url = '') {
     dv: /\b(?:dv|dolby\s*vision)\b/.test(s),
     tenBit: /\b10bit\b/.test(s),
     imax: /\bimax\b/.test(s),
-    codecLabel: video === 'hevc' ? 'H.265' : video === 'avc' ? 'H.264' : video === 'av1' ? 'AV1' : video === 'xvid' ? 'XviD' : video === 'vp9' ? 'VP9' : '',
+    codecLabel: video === 'hevc' ? 'H.265' : video === 'avc' ? 'H.264' : video === 'av1' ? 'AV1' : video === 'xvid' ? 'XviD' : video === 'vc1' ? 'VC-1' : video === 'vp9' ? 'VP9' : '',
     audioLabel,
     langs,
   };
 }
 
-export function makeStream({ provider, providerName, url, quality, filename, headers }) {
+/** `container` overrides the URL-based guess, for providers that know the format (e.g. HLS playlists served as .jpg). */
+export function makeStream({ provider, providerName, url, quality, filename, headers, container }) {
   const name = filename || fileNameOf(url);
-  return { id: `${provider}|${url}`, provider, providerName, url, quality, height: heightOf(quality), container: containerOf(url), filename: name, info: describe(name, url), headers: headers || {} };
+  return { id: `${provider}|${url}`, provider, providerName, url, quality, height: heightOf(quality), container: container || containerOf(url), filename: name, info: describe(name, url), headers: headers || {} };
 }
+
+/** Providers swallow upstream failures, but a cancel or timeout must reach the orchestrator (see makeCtx). */
+export const isAbort = (e) => !!e && (e.name === 'AbortError' || e.name === 'TimeoutError');
+export const unlessAbort = (fallback) => (e) => { if (isAbort(e)) throw e; return fallback; };

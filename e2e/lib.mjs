@@ -81,9 +81,10 @@ export function createBdixMock({ cors = true } = {}) {
 
 export async function startApp({ env = { TMDB_API_KEY: 'test-key' }, bdix } = {}) {
   const mockLog = [];
-  const dev = createDevServer({ env, fetchImpl: createMockFetch({ mediaBase: bdix ? bdix.base : 'http://127.0.0.1:1', log: mockLog }) });
+  const sources = { hexion: false }; // the Hexion step switches its mock site on; other steps see "not on that site"
+  const dev = createDevServer({ env, fetchImpl: createMockFetch({ mediaBase: bdix ? bdix.base : 'http://127.0.0.1:1', log: mockLog, sources }) });
   const port = await listen(dev);
-  return { dev, port, origin: `http://127.0.0.1:${port}`, mockLog, close: () => dev.close() };
+  return { dev, port, origin: `http://127.0.0.1:${port}`, mockLog, sources, close: () => dev.close() };
 }
 
 export async function startGateway({ origin, token = 'tok', allowPrivate = ['127.0.0.1'] }) {
@@ -91,6 +92,9 @@ export async function startGateway({ origin, token = 'tok', allowPrivate = ['127
   const port = await listen(gw);
   return { gw, url: `http://127.0.0.1:${port}`, token, close: () => gw.close() };
 }
+
+/** Hosts the browser contacts directly for Fendrix (and Hexion's file hosts); aborted unless a step mocks them. */
+export const PUBLIC_SOURCE_HOSTS = /^(enc-dec\.app|api\.wing\.st|api\.shegu\.st|api\.shegu\.xyz|.*\.workers\.dev|.*\.r2\.dev|.*\.r2\.cloudflarestorage\.com|pixeldrain\.com)$/;
 
 export async function launch() {
   // @sparticuz/chromium ships Lambda-oriented flags that switch browser security OFF (CORS, mixed content, site isolation).
@@ -105,6 +109,13 @@ export async function launch() {
     await page.setRequestInterception(true);
     page.on('request', (r) => {
       const u = new URL(r.url());
+      // a step may answer requests itself (public-source mocks); everything else below is the default
+      if (page.__intercept && page.__intercept(r, u)) return;
+      // the browser calls these public sources directly; never let a test reach the real internet.
+      // Fendrix's session broker answers "no session" (a valid reply: no console noise), anything else is cut off.
+      if (u.hostname === 'enc-dec.app') return r.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"status":404,"error":"not found"}' });
+      if (u.hostname === 'api.wing.st') return r.respond({ status: 404, contentType: 'text/plain', headers: { 'access-control-allow-origin': '*' }, body: 'not found' }); // Settings -> Test connection
+      if (PUBLIC_SOURCE_HOSTS.test(u.hostname)) return r.abort('internetdisconnected');
       if (u.hostname === 'image.tmdb.org') {
         return r.respond({ status: 200, contentType: 'image/svg+xml', headers: { 'access-control-allow-origin': '*' }, body: placeholderSvg('/' + u.pathname.split('/').pop().replace(/\.\w+$/, '')) });
       }
@@ -114,6 +125,7 @@ export async function launch() {
     page.on('console', (m) => {
       const t = m.text();
       if (page.__expectErrors) return; // failure-injection steps deliberately provoke network/CORS errors
+      if (page.__ignoreErrors && page.__ignoreErrors.test(t)) return; // a step names the exact errors it expects
       if (m.type() === 'error' && !/Failed to load resource.*(404|5\d\d)/.test(t)) problems.push(`[${label}] console.error: ${t}`);
     });
     page.on('pageerror', (e) => problems.push(`[${label}] pageerror: ${e.message}`));
