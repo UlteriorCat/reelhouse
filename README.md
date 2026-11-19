@@ -97,6 +97,20 @@ Notes
 * The site uses hash routes (`/#/movie/603`), so it needs no SPA fallback rules.
 * **https vs http:** a `*.pages.dev` site is always https. If you want direct (non-gateway) access to plain-http BDIX servers, attach a custom domain and disable "Always Use HTTPS" for it, or use the gateway.
 
+### Accounts (optional): sign-in, sync, invite codes
+
+Without this the site works as before: history and lists live on each device. With it, people sign in (accounts need an **invite code** from you) and their history, lists, resume positions and playback settings follow them to every device.
+
+1. Create the database (once): `npx wrangler d1 create reelhouse-accounts`.
+2. Cloudflare dashboard → your Pages project → *Settings → Bindings* → add a **D1 database** binding named **`DB`** pointing at `reelhouse-accounts`. The tables are created automatically on first use.
+3. *Settings → Variables and Secrets*: add **`ADMIN_USERNAME`** (plain text, e.g. `admin`) and **`ADMIN_PASSWORD`** (as a **secret**, at least 10 characters; a long random one). Or from a terminal: `npx wrangler pages secret put ADMIN_PASSWORD --project-name reelhouse`.
+4. Redeploy, open the site, *Settings → Account → Sign in* with those two values: that first sign-in creates the admin account. Then *Change password* there if you like; after the first sign-in the secret is no longer used to sign in (the database is).
+5. *Settings → Account → Admin*: generate invite codes (one person or several, with an expiry), send them; see who joined; reset a forgotten password (gives you a temporary one to pass on); remove users; disable codes.
+
+Security notes: passwords are hashed (PBKDF2-SHA256, 100 000 iterations by default, set `PBKDF2_ITERATIONS` to change), sessions are HttpOnly cookies, failed sign-ins are rate limited, invite codes are stored hashed and shown once. On the Workers **free plan** one hash at 100 000 iterations takes about 14 ms of CPU (measured on the build machine) against a 10 ms limit; if sign-in fails with a Cloudflare "exceeded CPU" error, set `PBKDF2_ITERATIONS=50000` (existing passwords keep working: each hash stores its own count).
+
+Locally: `npm run dev` uses a SQLite file in `.wrangler/` as the database and reads `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.dev.vars`.
+
 ### Using the site on `pages.dev` (https)
 
 A `*.pages.dev` address is always https. That is fine for TMDB, subtitles and the player, but it is the hardest case for **BDIX** (section "Read this first"). What to expect and what to do:
@@ -151,10 +165,10 @@ Traffic caveat: through the gateway, video flows *server → gateway → your de
 | Command | What it does |
 |---|---|
 | `npm run dev` | Local server (static + API + `_headers`) |
-| `npm test` | 93 unit and integration tests (server layer, gateway, providers vs. golden output, client logic, router, API client, branding) |
+| `npm test` | 127 unit and integration tests (server layer, gateway, providers vs. golden output, client logic, router, API client, branding) |
 | `npm run e2e:media` | Generates the small test videos (needs `ffmpeg`) |
-| `npm run e2e` | 29 browser end-to-end steps in headless Chromium (real gateway, mock BDIX server, real videos). Add a word to run matching steps only: `npm run e2e -- subtitles` |
-| `npm run smoke:cf` | Runs the real Cloudflare runtime (`wrangler pages dev` / workerd) against a mock TMDB: 8 Cloudflare runtime checks of the Function, routing and headers |
+| `npm run e2e` | 35 browser end-to-end steps in headless Chromium (real gateway, mock BDIX server, real videos). Add a word to run matching steps only: `npm run e2e -- subtitles` |
+| `npm run smoke:cf` | Runs the real Cloudflare runtime (`wrangler pages dev` / workerd) against a mock TMDB: 9 Cloudflare runtime checks of the Function, routing and headers |
 | `npm run rebrand` | Syncs `index.html` and the web manifest with `public/js/brand.js` after you change the name or colour |
 | `npm run check:docs` | Checks that the documentation still matches the code (paths, scripts, counts, versions, env vars) |
 | `EXT_REPO=/path/to/cloudstream node scripts/make-golden.mjs` | Regenerates `test/fixtures/golden.json` by running the *original* CloudStream scrapers (only needed if you change a provider on purpose) |

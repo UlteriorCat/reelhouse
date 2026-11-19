@@ -28,6 +28,7 @@ Do not read it end to end. Jump by task:
 | What is unknown or untested | 15 Limitations |
 | Licensing, TMDB terms | 16 Licensing |
 | Recipes (add a provider, change player) | 17 Extending |
+| Accounts, invite codes, admin, lists, sync and its merge rules | 18 Accounts and sync |
 
 ## Important files
 
@@ -37,7 +38,8 @@ Do not read it end to end. Jump by task:
 | Design | `public/css/app.css` | tokens in `:root` at the top; all layout and components; no other CSS |
 | Entry and routing | `public/index.html`, `public/js/main.js`, `public/js/router.js` | hash routes: `#/`, `#/search?q=`, `#/list`, `#/movie/ID`, `#/tv/ID?s=N`, `#/watch/movie/ID`, `#/watch/tv/ID/S/E` |
 | Views | `public/js/ui/home.js`, `details.js`, `watch.js`, `browse.js`, `settings.js`, `sources.js`, `shell.js`, `components.js` | each view receives its **own detached container** (`root`) and an abort `signal` |
-| Data | `public/js/api.js`, `store.js`, `util.js` | `api.js` = our `/api/*` client with cache and stale-while-revalidate; `store.js` = everything in `localStorage` (prefix `rh:`) |
+| Data | `public/js/api.js`, `store.js`, `util.js` | `api.js` = our `/api/*` client with cache and stale-while-revalidate; `store.js` = everything in `localStorage` (prefix `rh:`): settings, `library` (history, lists, tombstones), progress |
+| Accounts | `lib/accounts.js` (server), `public/js/account.js` (client + sync engine), `public/js/sync-merge.js`, `public/js/ui/account.js`, `public/js/ui/admin.js`, `dev/d1-sqlite.mjs` | D1 binding `DB`; no `DB` = accounts off. See IMPLEMENTATION section 18 |
 | Providers | `public/js/providers/{df,cf,fh,fn,hx,aesgcm,common,index}.js`, `public/js/net.js` | df/cf = BDIX servers, fh/fn/hx = online sources (FlixHub, Fendrix, Hexion); `aesgcm.js` = Fendrix decryption fallback without WebCrypto; `net.js` = direct / gateway / edge transport. Reference scrapers: `cloudstream-main/cloudstream/providers/` |
 | Playback | `public/js/player.js`, `streams.js`, `subs.js` | `streams.js` ranks and predicts playability; `player.js` wraps ArtPlayer and monitors health; `subs.js` decodes and styles subtitles |
 | Server | `functions/api/[[path]].js` (entry), `lib/api.js` (router), `lib/tmdb.js`, `lib/subs.js` | all logic is in `lib/` and shared with the dev server and tests |
@@ -82,6 +84,13 @@ Facts to keep in mind: browsers play MOV and MKV (H.264/AAC) fine regardless of 
 * Hexion: `4khdhub.one` → `greenmotors.club` wrapper → `hubdrive.blog`/`hubcloud.mov` → `gamerxyt.com` file page → `*.workers.dev` files. These domains rotate; the original scraper finds nothing on today's pages (deviation documented in IMPLEMENTATION section 6).
 * Both have parity tests that run the original scraper files in a `vm` (`test/public-providers.test.mjs`). E2E never reaches the real internet: the harness answers or aborts the providers' hosts (`PUBLIC_SOURCE_HOSTS` in `e2e/lib.mjs`).
 
+## Accounts and sync: rules
+
+* Never remove an item from the library by deleting it alone: use the store methods, which write a **tombstone** (`removeHistory`, `removeFromList`, `deleteList`, `clearHistory`); otherwise sync brings it back from another device.
+* `sync-merge.js` must stay commutative, associative and idempotent (property test in `test/sync-merge.test.mjs`).
+* Device-only settings (gateway URL/token) must not enter `SYNCED_SETTINGS`.
+* Account routes are the only non-GET API routes; each needs JSON, a same-origin `Origin`, and a test (including role and CSRF checks). Never return password hashes, session tokens or invite codes after creation.
+
 ## Rules for any change
 
 1. Do not query BDIX outside a user click. Do not add server-side BDIX code.
@@ -107,7 +116,7 @@ Network reach varies by session: earlier ones reached only npm, PyPI, GitHub and
 ## Useful commands
 
 ```bash
-npm ci && npm test                         # install and run 93 unit/integration tests
+npm ci && npm test                         # install and run 127 unit/integration tests
 npm run dev                                # local site (needs TMDB_API_KEY in .dev.vars)
 npm run e2e:media && npm run e2e           # browser suite (needs ffmpeg; FFMPEG=... if not on PATH)
 npm run e2e -- subtitles                   # run only matching steps

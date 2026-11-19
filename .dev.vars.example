@@ -7,5 +7,9 @@ OPENSUBTITLES_PASSWORD=
 # Optional: comma-separated public hosts the /api/proxy edge route may fetch. Replaces the default list
 # (FlixHub + the Hexion/4kHdHub link chain, see DEFAULT_EDGE_PROXY_HOSTS in lib/api.js), so repeat every host you need.
 # EDGE_PROXY_HOSTS=flixhub.net,www.flixhub.net,4khdhub.one,www.4khdhub.one,greenmotors.club,hubdrive.blog,hubcloud.mov,gamerxyt.com
+# Optional accounts (needs a D1 binding named DB on Cloudflare; npm run dev uses a local SQLite file instead):
+# ADMIN_USERNAME=admin
+# ADMIN_PASSWORD=a-long-random-password   (secret; creates the first admin on first sign-in)
+# PBKDF2_ITERATIONS=100000                 (10000-100000; lower it if the Workers free plan CPU limit is hit)
 # Optional: product name sent as the OpenSubtitles User-Agent. Set it to match the consumer you registered at opensubtitles.com.
 # APP_NAME=Reelhouse

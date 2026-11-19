@@ -1,5 +1,6 @@
 // Shared helpers for the end-to-end run: a mock BDIX server on a real socket, the dev server with mocked upstreams,
 // and a Chromium launcher that records console errors and Content-Security-Policy violations.
+import { createD1 } from '../dev/d1-sqlite.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -79,8 +80,11 @@ export function createBdixMock({ cors = true } = {}) {
   return { srv, log, state, listen: async () => (state.port = await listen(srv)), close: () => srv.close(), get base() { return `http://127.0.0.1:${state.port}`; } };
 }
 
-export async function startApp({ env = { TMDB_API_KEY: 'test-key' }, bdix } = {}) {
+export const E2E_ADMIN = { username: 'owner', password: 'e2e admin passphrase' };
+export async function startApp({ env = { TMDB_API_KEY: 'test-key' }, bdix, accounts = true } = {}) {
   const mockLog = [];
+  // accounts: an in-memory database and a first admin (dev/d1-sqlite.mjs stands in for Cloudflare D1)
+  if (accounts && !env.DB) env = { ...env, DB: createD1(), ADMIN_USERNAME: E2E_ADMIN.username, ADMIN_PASSWORD: E2E_ADMIN.password, PBKDF2_ITERATIONS: '10000' };
   const sources = { hexion: false }; // the Hexion step switches its mock site on; other steps see "not on that site"
   const dev = createDevServer({ env, fetchImpl: createMockFetch({ mediaBase: bdix ? bdix.base : 'http://127.0.0.1:1', log: mockLog, sources }) });
   const port = await listen(dev);
@@ -99,12 +103,14 @@ export const PUBLIC_SOURCE_HOSTS = /^(enc-dec\.app|api\.wing\.st|api\.shegu\.st|
 export async function launch() {
   // @sparticuz/chromium ships Lambda-oriented flags that switch browser security OFF (CORS, mixed content, site isolation).
   // A test run with those flags would not behave like a user's browser, so they are removed.
-  const RELAXED = /^--(disable-web-security|allow-running-insecure-content|disable-site-isolation-trials|disable-features=.*(IsolateOrigins|site-per-process).*)$/;
+  // --single-process is also unlike a user's browser, and it cannot open a second profile (used as a second device).
+  const RELAXED = /^--(disable-web-security|allow-running-insecure-content|disable-site-isolation-trials|single-process|disable-features=.*(IsolateOrigins|site-per-process).*)$/;
   const args = chromium.args.filter((a) => !RELAXED.test(a));
   const browser = await puppeteer.launch({ args: [...args, '--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--mute-audio'], executablePath: await chromium.executablePath(), headless: 'shell' });
   const problems = [];
-  async function newPage({ width = 1280, height = 800, touch = false, label = 'page', setup } = {}) {
-    const page = await browser.newPage();
+  /** `context`: a separate browser profile (own cookies and storage), i.e. a second device. */
+  async function newPage({ width = 1280, height = 800, touch = false, label = 'page', setup, context } = {}) {
+    const page = await (context || browser).newPage();
     await page.setViewport({ width, height, deviceScaleFactor: touch ? 2 : 1, isMobile: touch, hasTouch: touch });
     await page.setRequestInterception(true);
     page.on('request', (r) => {
@@ -138,7 +144,7 @@ export async function launch() {
     return page;
   }
   async function cspViolations(page) { return page.evaluate(() => window.__csp || []); }
-  return { browser, newPage, problems, cspViolations, close: () => browser.close() };
+  return { browser, newPage, problems, cspViolations, newDevice: () => browser.createBrowserContext(), close: () => browser.close() };
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

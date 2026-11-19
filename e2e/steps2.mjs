@@ -18,7 +18,7 @@ export async function steps2(ctx) {
     assert.equal(v.w, 640); assert.ok(v.audio > 0, 'audio is actually being decoded'); assert.ok(v.rs >= 3);
     assert.equal(await page.$$eval('.banner', (e) => e.length), 0, 'no warning banner for a healthy source');
     assert.equal(bdix.log.filter((r) => r.method === 'POST').length, 4);
-    const hist = await page.evaluate(() => JSON.parse(localStorage.getItem('rh:history')));
+    const hist = await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('rh:library')).history));
     assert.equal(hist[0].id, 603); assert.equal(hist[0].title, 'The Matrix');
     assert.equal(await text(page, '.watch-top h1'), 'The Matrix1999');
     await shot(page, 'watch-desktop');

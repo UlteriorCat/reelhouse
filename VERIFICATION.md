@@ -86,6 +86,9 @@ Typical durations: unit about 3 s; E2E 3-4 minutes; Cloudflare smoke about 20 s.
 | `test/api.test.mjs` | `lib/` (API router, TMDB client, subtitle service) | A fake upstream `fetch` records every call. Checks: 5-row aggregation and slimmed payload; persons and posterless items dropped; exactly one upstream call per row; key sent as `api_key` (v3) or `Bearer` (v4) and **never in any response**; missing key → 501; `/health` without secrets; validation (400) and error mapping (404, 401→502, 429→503); OpenSubtitles query is lowercase + alphabetical, TV uses `parent_tmdb_id`; Stremio fallback maps 3-letter codes and filters hosts; subtitle download flow (login, download, gzip link); SSRF guards (non-https, suffix look-alikes, wrong hosts); edge proxy allow-list including `user@host`, ports, look-alike domains; `APP_NAME` sets the OpenSubtitles User-Agent |
 | `test/gateway.test.mjs` | `gateway/bdix-gateway.mjs` | HLS mode (`/s?hls=1`) against a CDN that 404s any Origin: master/variant/`URI=` attributes rewritten with token and headers, relative and absolute URIs, segments byte-exact, Range passed through, no Origin upstream; rewritten child URLs re-checked by the address policy, token required, oversize playlist refused (also when it arrives in one chunk), no rewrite without `hls=1`. A real gateway and a real mock upstream on loopback. Token enforcement; refuses non-loopback without token; envelope forwarding with header allow-list (cookie and custom headers dropped), UA and per-host Referer injection; CORS origin echo and private-network preflight; Range → 206 with exact bytes; content-type fix by extension; `Content-Disposition` sanitising (CR/LF, quotes, non-ASCII); SSRF matrix (loopback, decimal and hex IPv4, `[::1]`, mapped IPv6 in both forms, NAT64, 10/8, 192.168/16, `localhost`, `file:`, `ftp:`, credentials, redirect into link-local); `classify()` table for IPv4 and IPv6 |
 | `test/public-providers.test.mjs` | `providers/fn.js`, `hx.js`, `aesgcm.js`, edge allow-list | The **original** `fendrix.js`/`hexion.js` executed in a `vm` against the same mocks: identical streams and requests (movie/TV, HLS with/without audio renditions, file qualities, WP-API and search paths); deviations (unreadable master, `workers.dev` pages, VC-1); sealed reply survives as bytes, bad tag yields nothing; software AES-GCM equals WebCrypto; no forbidden headers, simple-request POST; gateway bypass and direct media; built-in-HLS ranking; cancel at the first request and mid-chain; hanging fallback endpoint; exact-host edge allow-list incl. look-alikes, ports, userinfo, IP literals |
+| `test/sync-merge.test.mjs` | `sync-merge.js`, store sync | Merge: newest copy wins, removals (tombstones) are not undone by older copies, newer watches beat removals, lists (items, renames, deletion vs later edits, My List undeletable), caps; commutative/associative/idempotent on 300 random three-device cases (20 000 run once by hand); hostile input normalized (no gateway token, no prototype pollution); two stores meeting through export/import |
+| `test/accounts.test.mjs` | `lib/accounts.js` via `lib/api.js` with D1 on SQLite | No DB = 503; admin bootstrap once from secrets; cookie flags and hashed session ids; CSRF (Origin, JSON only), size limits; invites (hashed, shown once, uses, unlimited, disabled, expired, simultaneous sign-ups: exactly one wins); sign-up rules incl. reserved admin name; no user enumeration; rate limits and their window; password change revokes other sessions; admin-only routes, reset password, remove user, not self; own-account delete, last admin protected; sync per user with optimistic concurrency, normalization, size limit; PBKDF2 format and hash upgrade; sliding 30-day sessions |
+| `test/account-sync.test.mjs` | `public/js/account.js` against the real handler | Two simulated devices: sign-up brings device data into the account; lists/removals/settings both ways; a forced conflict (409) merged and retried; no sync loop after applying the account copy; offline error then recovery; sign-out clears the device; signed out elsewhere; accounts off |
 | `test/providers.test.mjs` | `public/js/providers/*`, `net.js` | 14 **parity** tests against golden output (section 6); `.mov` deviation; release-name parsing; failure classification (unreachable / error / empty / ok); one provider timing out does not affect others; cancellation; settle window (early return, slow provider aborted); duplicate-URL choice in both arrival orders; transport (gateway envelope, edge proxy URL, direct options, `mediaUrl`, `diagnose` states) |
 | `test/client-logic.test.mjs` | `store.js`, `streams.js`, `subs.js`, `util.js` | Settings merge and corrupt-data fallback; storage that throws; history dedupe and cap; resume rules (>30 s and <93 %); progress pruning; My List; clear functions; `browserCaps` from fake `canPlayType`; **playability matrix** (the codec findings in section 9); ranking order; external links (Android intent, iOS callback); `.m3u`; encoding detection (UTF-8, BOM, UTF-16, Windows-1252); SRT→VTT; subtitle style maths; formatting helpers |
 | `test/router.test.mjs` | `router.js` | Valid routes; malformed or hostile paths (`/movie/../..`, huge ids, bad escapes) all become not-found; href builders round-trip |
@@ -120,7 +123,7 @@ The golden file is data recorded from the GPL-3.0 originals (see `NOTICE.md`). R
 * **Failure capture**: any browser `console.error` or `pageerror` (except expected 404/5xx resource noise, and except pages flagged `__expectErrors` for deliberate failure injection) and any `securitypolicyviolation` fails the run.
 * **Screenshots** are written to `e2e/screenshots/` (git-ignored) at 390, 820 and 1440 px and for key states; they are reviewed by eye, not compared pixel-wise.
 
-### Steps (29)
+### Steps (35)
 
 | # | Step | Key assertions |
 |---|---|---|
@@ -151,6 +154,12 @@ The golden file is data recorded from the GPL-3.0 originals (see `NOTICE.md`). R
 | 27 | Fendrix without built-in HLS | `canPlayType` hides HLS like Firefox: without a gateway the ticket is "Unlikely to play here" with the gateway hint; with the real gateway it plays through hls.js (Media Source, sound decoded), playlists fetched via `/s?hls=1`, variant and segments reach the Origin-refusing CDN without an Origin, no banner |
 | 28 | Hexion | 4kHdHub chain (search, wrapper, HubCloud, file page) through the edge proxy; one ticket "Hexion (FSL)" with size tag, interstitial link ignored; nothing downloaded during lookup; plays from the file host (HTTP cache off: edge replies are cacheable) |
 | 29 | online + BDIX down | BDIX guidance shown, plus the hint that the online sources did not answer either |
+| 30 | history | remove from Continue watching, Undo restores in place, removal saved; History page: remove, Clear (Cancel keeps, confirm empties; count is current) |
+| 31 | lists | save sheet: switch per list, create list (duplicate name refused inline), saved state; Lists page: rename, remove with Undo, My List undeletable, delete with confirmation; list rails on home; phone without overflow |
+| 32 | accounts | admin first sign-in from secrets; Admin page; invite generated (shown once) and listed; second profile signs up (wrong code and mismatched passwords explained), invite then shown used; no Admin link for users |
+| 33 | sync | two profiles of one account: list and history arrive; a removal on one reaches the other and its open page redraws; sign-out confirms, clears the device, ends the session |
+| 34 | passwords + admin | password change (wrong current refused) signs out the other profile; non-admin refused (page and API); admin reset gives a working temporary password and signs the user out; invite disabled; user removed (signed out); admin page on phone |
+| 35 | accounts off | without a database the site works and Settings has no Account section |
 
 ## 8. Cloudflare runtime smoke test
 
@@ -192,6 +201,8 @@ Procedure: edit the code to re-introduce the bug, run `npm test`, confirm exactl
 | Gateway route for Fendrix HLS removed / `hls=1` not added | `mediaUrl: Fendrix HLS goes through the gateway ...` |
 | Gateway never rewrites (also run in the browser: E2E step 27 then cannot play) / `URI=` not rewritten / sniffed bytes not put back / no size limit | gateway HLS tests |
 | Gateway ignored in ranking | `playability: Fendrix HLS ...` |
+| Accounts (16 mutations: Origin check, JSON check, admin role, disabled/used/expired invites, session revocation on password change, bootstrap when an admin exists, reserved admin name, login rate limit, session expiry, sliding expiry, self-removal, cross-user sync read, optimistic concurrency, normalization, Secure cookie) | `test/accounts.test.mjs` (3 were first missed and got tests) |
+| Sync engine (conflict not merged, sign-out keeps data, 401 ignored, apply guard removed) | `test/account-sync.test.mjs` (2 were first missed and got tests) |
 | Wait for every endpoint (`Promise.all`) again | `fendrix: a hanging fallback endpoint does not hold back ...` |
 
 Also exercised the other way round: editing `brand.js` without running `npm run rebrand` makes `brand: index.html and the web manifest match ...` fail.
@@ -230,6 +241,12 @@ Found by testing (not by review), with how it was found and what keeps it fixed.
 | 18 | `imdbId` missing from the lookup meta (watch and details pages) | review against the originals' inputs | pass `d.imdbId` | providers use it in tests; E2E step 27 (search path) |
 | 19 | Off-BDIX with an online source answering "error": guidance said "No matching files" instead of explaining BDIX | tracing the failure-UX step | BDIX and online groups judged separately | E2E steps 17 and 28 |
 | 21 | Gateway HLS: a playlist arriving in a single chunk skipped the size limit | gateway safety test | limit checked on the total | gateway test + mutation |
+| 22 | Sync merge was not commutative: a tombstone with time 0 kept from one side, dropped from the other | property test (300 random cases) | absent-or-newer rule | property test |
+| 23 | Clear-history confirmation counted the titles shown when the page was drawn (also "1 titles") | E2E step 30 | count at click time, singular | E2E step 30 |
+| 24 | Home JS over budget (195 KB > 170 KB) after adding accounts | E2E step 22 | Settings and Admin load on first use (165 KB) | E2E step 22 |
+| 25 | Sync merge dropped items and lists whose time was 0 although no tombstone existed (an empty My List, old data) | a new test written for another reason; convergence properties cannot see it | only an existing tombstone removes | regression test + mutation |
+| 26 | A stored document with `__proto__` keys could set an object's prototype during merge | review | such keys are skipped | test |
+| 27 | UI review by a separate checker (calibrated on a planted difference first): History page showed no empty state after removing the last title; Delete account submit was primary; Admin h1 to h3; admin load errors without retry; copy failure shown as success; Undo 36 px and timed; two wordings of Clear history; Settings Clear history without confirmation; identical "See all" names; focus lost after Undo | ui-consistency check (3 rounds) | all fixed; Undo toasts now persist until used/dismissed/replaced/navigation; keyboard removal focuses Undo, Undo focuses the restored title | E2E steps 30-31 |
 | 20 | E2E not hermetic once online providers existed: gateway step reached live FlixHub/Hexion; edge replies cached across steps | console error + step time (27 s → 2.5 s) | harness answers/aborts provider hosts; endpoints pointed at the mock; cache off in step 27 | harness |
 | 13 | UX polish: hero hid the first rail; toolbar wrapped; notice headings dim inside sheets; subtitle tooltip ran into its label | screenshot review | CSS and label changes | screenshots, E2E step 25 |
 
@@ -239,13 +256,13 @@ Test-side mistakes (not product bugs) were also found and corrected, e.g. a taut
 
 | Suite | Result |
 |---|---|
-| `npm test` | 93 tests pass |
-| `npm run e2e` | 29 steps pass; no browser console errors (step 26 allows exactly the fallback endpoint's CORS error); no CSP violations |
-| `npm run smoke:cf` | 8 checks pass |
+| `npm test` | 127 tests pass |
+| `npm run e2e` | 35 steps pass; no browser console errors (step 26 allows exactly the fallback endpoint's CORS error); no CSP violations |
+| `npm run smoke:cf` | 9 checks pass |
 | `npm run check:docs` | passes |
 | Clean-room reproduction | extract the zip, `npm ci`, `npm test`, `npm run build:vendor` (bundles identical to the committed ones), `npm run e2e:media`, `npm run e2e`, `npm run smoke:cf` |
 
-Measured on the home page (desktop, local server, printed by E2E step 22): 68 requests, app JS 143 KB as served to the browser (151 KB across all 27 modules on disk, 46 KB gzipped), CSS 21 KB, font 40 KB, `DOMContentLoaded` 130-190 ms. Player libraries are not requested on the home page.
+Measured on the home page (desktop, local server, printed by E2E step 22): 72 requests, app JS 165 KB as served to the browser (200 KB across all 31 modules on disk, 61 KB gzipped; Settings, account screens and Admin load on first use), CSS 21 KB, font 40 KB, `DOMContentLoaded` 130-190 ms. Player libraries are not requested on the home page.
 
 ## 14. Not verified (and how to verify it yourself)
 
@@ -312,3 +329,7 @@ Done by hand from the sandbox, not part of any test (tests never reach the inter
 | Port `hx.js` through the real `/api/proxy` handler (Node) | Inception 7 streams (2160p/1080p, 6.6-66 GB), Breaking Bad S01E01 4 streams incl. one signed R2 URL |
 | `*.workers.dev` file links, 1 KB range | one `206 video/x-matroska`, `ACAO: *`; six `403` "download quota exceeded" (upstream Google Drive quota) |
 | `pixel.hubcloud.*` link | redirects to an HTML download interstitial, not a file (skipped) |
+
+## 19. Accounts in the real Cloudflare runtime
+
+`npm run smoke:cf` starts `wrangler pages dev` with a throw-away local D1 database (`--d1 DB --persist-to <temp dir>`) and checks, inside `workerd`: admin bootstrap with PBKDF2 at 100 000 iterations, invite creation, sign-up, a second sign-up with the same single-use code refused, sync write and read, a non-admin refused on admin routes, a cross-site Origin refused, `no-store` on account responses. Not verified: a real D1 database on Cloudflare and the free plan's CPU limit for hashing (see README *Accounts*).

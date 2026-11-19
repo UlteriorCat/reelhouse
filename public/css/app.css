@@ -294,3 +294,45 @@ body.is-watch .foot { display: none; }
 /* notices inside sheets: full width, bright heading (the generic sheet h3 style is for section labels) */
 .sheet-body .notice { margin: 14px 0 0; }
 .sheet-body .notice h3 { color: var(--text); margin: 0 0 6px; font-size: 16px; }
+
+/* ---- remove buttons on cards, rail "See all", toast action, lists, forms, admin rows ---- */
+.card-wrap > .remove { position: absolute; left: 6px; top: 6px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line); background: rgba(12, 17, 27, .82); color: var(--text); cursor: pointer; }
+.card-wrap > .remove::before { content: ''; position: absolute; inset: -4px; } /* 44px touch target */
+.card-wrap > .remove:hover { border-color: var(--rose); color: var(--rose); }
+.card-wrap > .remove .icon { width: 18px; height: 18px; }
+.rail-head .more { margin-left: auto; margin-right: 12px; color: var(--dim); font-size: 15px; min-height: 44px; display: inline-flex; align-items: center; }
+.rail-head .more:hover { color: var(--text); }
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast button { min-height: 44px; padding: 0 12px; border-radius: var(--r-btn); border: 1px solid var(--lamp); background: transparent; color: var(--lamp); font: inherit; font-weight: 600; cursor: pointer; }
+.btn.danger { background: transparent; border-color: #7a2f2f; color: var(--rose); }
+.btn.danger:hover { border-color: var(--rose); }
+.sheet-body .lead { color: var(--dim); }
+.listsec { margin-top: 28px; }
+.listsec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 0 var(--pad); margin-bottom: 12px; }
+.listsec-head h2 { font-size: clamp(18px, 2vw, 24px); font-weight: 700; letter-spacing: -.02em; margin-right: auto; }
+.listsec-head .count { color: var(--faint); font-weight: 400; font-size: 15px; margin-left: 8px; }
+.listsec .hint { padding: 0 var(--pad); color: var(--faint); }
+.page-head .actions { margin-top: 14px; }
+.form { display: grid; gap: 14px; }
+.form label { display: grid; gap: 6px; font-weight: 600; font-size: 14px; }
+.form label small { color: var(--faint); font-weight: 400; }
+.form .err-text { color: var(--rose); font-size: 14px; margin: 0; }
+.form .ok-text { color: var(--mint); font-size: 14px; margin: 0; }
+.admin { padding: 0 var(--pad) 32px; max-width: 920px; }
+.admin .set-group { margin-top: 18px; }
+.admin .row { border-top: 1px solid var(--line); flex-wrap: wrap; }
+.admin .row:first-of-type { border-top: 0; }
+.admin .row .who { flex: 1; min-width: 180px; }
+.admin .row .who small { display: block; color: var(--faint); font-size: 13px; }
+.admin .row .actions { margin-top: 0; }
+.secret { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.secret code { font-size: 18px; letter-spacing: .06em; padding: 6px 10px; }
+.status-ok { color: var(--mint); }
+.status-bad { color: var(--rose); }
+.admin .set-group > .lead { margin: 0 0 14px; }
+.admin .set-group > h2 { margin: 0 0 8px; color: var(--text); font-size: 15px; font-weight: 600; }
+.admin .lead { color: var(--dim); }
+.admin .set-group .notice { margin: 10px 0 0; }
+.admin .set-group .notice h3 { font-size: 15px; }
+.toast .dismiss { border-color: var(--line); color: var(--dim); min-width: 44px; padding: 0; display: grid; place-items: center; }
+.toast .dismiss .icon { width: 18px; height: 18px; }

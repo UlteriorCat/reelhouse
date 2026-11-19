@@ -216,7 +216,8 @@ Consequences built into the app:
 
 ## 12. Security model
 
-* **Secrets** (TMDB key, OpenSubtitles key/login) exist only in the Function's environment; tests assert they never appear in any response.
+* **Secrets** (TMDB key, OpenSubtitles key/login, `ADMIN_PASSWORD`) exist only in the Function's environment; tests assert they never appear in any response.
+* **Accounts**: see section 18 (password hashing, sessions, CSRF, rate limits, invite codes, admin checks).
 * **CSP** (`public/_headers`, applied by the dev server and verified under workerd): `default-src 'self'`, scripts from self only, images from self and `image.tmdb.org`, `object-src 'none'`, `frame-ancestors 'none'`. `connect-src` and `media-src` allow `http:`/`https:` because BDIX hosts and your gateway are user-specific; the browser's own mixed-content rules still apply. `'unsafe-inline'` is allowed for styles only (the player sets inline styles).
 * **No HTML injection**: DOM is built with `textContent`; provider HTML is parsed with an inert `DOMParser`.
 * **SSRF**: three independent guards (edge proxy host allow-list; subtitle host suffix allow-list; gateway address policy), each with tests, including the bypasses found during development (section 13).
@@ -226,9 +227,9 @@ Consequences built into the app:
 
 | Suite | Count | What it proves |
 |---|---|---|
-| Unit / integration (`npm test`) | 93 | API router and TMDB slimming, key handling, error mapping, subtitle service and SSRF guards; gateway (auth, envelope, Range, CORS, downloads, address matrix); **providers vs. golden output of the original scrapers (14 scenarios, same requests)**; **Fendrix and Hexion vs. the original scraper files executed in a `vm` (same streams, same requests), their deviations, AES-GCM (WebCrypto and software), cancel at every stage, the edge allow-list**; orchestration (failure classes, timeouts, cancel, settle window, dedupe); client logic (store, ranking, playability, subtitle conversion, router, API client) |
-| Browser end-to-end (`npm run e2e`) | 29 browser end-to-end steps | Real Chromium 153 with a mock BDIX server on real sockets, real test videos, the real gateway. See list below |
-| Cloudflare runtime (`npm run smoke:cf`) | 8 Cloudflare runtime checks | `wrangler pages dev` (workerd): bundling of the Function with `../../lib` imports, `_headers`, `_routes.json`, validation, SSRF guards, no key leakage |
+| Unit / integration (`npm test`) | 127 | API router and TMDB slimming, key handling, error mapping, subtitle service and SSRF guards; gateway (auth, envelope, Range, CORS, downloads, address matrix); **providers vs. golden output of the original scrapers (14 scenarios, same requests)**; **Fendrix and Hexion vs. the original scraper files executed in a `vm` (same streams, same requests), their deviations, AES-GCM (WebCrypto and software), cancel at every stage, the edge allow-list**; orchestration (failure classes, timeouts, cancel, settle window, dedupe); client logic (store, ranking, playability, subtitle conversion, router, API client) |
+| Browser end-to-end (`npm run e2e`) | 35 browser end-to-end steps | Real Chromium 153 with a mock BDIX server on real sockets, real test videos, the real gateway. See list below |
+| Cloudflare runtime (`npm run smoke:cf`) | 9 Cloudflare runtime checks | `wrangler pages dev` (workerd): bundling of the Function with `../../lib` imports, `_headers`, `_routes.json`, validation, SSRF guards, no key leakage |
 
 E2E coverage: home/search/details/My List; layouts at 390/820/1440 px; **zero BDIX requests until a click**; download sheet (4 parallel POSTs, ranking, warnings, anchors, clipboard API and fallback, `.m3u`); playback of MP4, MOV and MKV with sound; resume, Continue watching, next episode; HEVC and AC-3 detection with fallback; subtitles (auto-load, Latin-1, size/height/colour/background, language search, upload, Off); gateway mode (UA injected, Range proxied, attachment download, token enforced); unreachable and CORS-blocked servers; settings effects; Android/iOS/desktop external-player links; route errors; missing-API-key setup notice; lazy loading and byte budget; accessibility; keyboard shortcuts; 8 cold-start navigation races; phone portrait/landscape and tablet layouts; **Fendrix** (sealed lookup answered in the browser, decrypted, played through built-in HLS from a local CDN that refuses requests with an Origin, never through the configured gateway); **Hexion** (4kHdHub chain through the edge proxy, size shown, file played from its host); guidance when BDIX and online sources are down. The browser's requests to the online providers' hosts are answered by the harness or cut off, so no step reaches the real internet. The run fails on any browser console error or CSP violation (there are none; the Fendrix step names the one expected error, the fallback endpoint's CORS failure).
 
@@ -262,7 +263,7 @@ Measured in the E2E run (desktop viewport, local server):
 
 | Item | Size |
 |---|---|
-| App JavaScript (27 modules, unminified) | 151 KB raw, **46 KB gzipped** (`aesgcm.js` loads only without WebCrypto) |
+| App JavaScript (31 modules, unminified) | 200 KB raw, **61 KB gzipped**; the home page loads 165 KB of it (Settings, the account screens, Admin and `aesgcm.js` load on first use) |
 | CSS | 21 KB raw, 5 KB gzipped |
 | Font | 41 KB (woff2) |
 | ArtPlayer (loaded on the watch page only) | 141 KB raw, 36 KB gzipped |
@@ -297,3 +298,36 @@ The tests assert that the player libraries are **not** requested on the home pag
 * **Change the player**: implement the same controller in `player.js` (`switchTo`, `addSubtitle`, `selectSubtitle`, `focus`, `applySubStyle`, `destroy`) and update `scripts/build-vendor.mjs`.
 * **Change server addresses**: edit the constants at the top of each provider, or repoint at runtime through the exported `endpoints`/`SERVERS` objects.
 * **Update vendor files**: change versions in `package.json`, `npm install`, `npm run build:vendor`, commit `public/vendor/`.
+
+## 18. Accounts and sync
+
+Optional: without a D1 binding named `DB` every account route answers 503 `accounts_not_configured`, Settings shows no Account section, and the library stays on the device as before.
+
+**What the user gets.** Named watch lists (My List plus their own; save sheet on the details page; Lists page with rename, delete, remove with Undo), removal of single history items (Continue watching and the History page, with Undo), and, signed in, the same history, lists, resume positions and playback settings on every device. Accounts are invite-only. Admins generate and disable invite codes, see users, reset a password (temporary password shown once) and remove users.
+
+**Server** (`lib/accounts.js`, routed first by `lib/api.js`; the only non-GET routes):
+
+| Route | What |
+|---|---|
+| `GET /api/auth/me`, `POST /api/auth/login`, `/signup`, `/logout`, `/password`, `/delete` | session state, sign-in, invite sign-up, sign-out, password change (signs out other sessions), delete own account (password required; not the last admin) |
+| `GET/PUT /api/sync` | the user's library document with a version; `PUT` must name the version it was merged from (409 returns the current copy) |
+| `GET /api/admin/users`, `DELETE /api/admin/users/:id`, `POST /api/admin/users/:id/reset` | admin only, role read from the database on every request; never self |
+| `GET/POST /api/admin/invites`, `POST /api/admin/invites/:id/disable` | invite codes: uses (1 to 1000 or unlimited), expiry (1 to 365 days or never), note |
+
+Tables (created on first use): `users`, `sessions`, `invites`, `user_state`, `attempts`.
+
+| Concern | Design |
+|---|---|
+| Passwords | PBKDF2-SHA256, random 16-byte salt, iterations stored in the hash (`PBKDF2_ITERATIONS`, default 100 000 = the Workers maximum; raised counts upgrade hashes on sign-in). Unknown users still cost one hash. 10 to 128 characters, not containing the username |
+| Sessions | 32 random bytes in `rh_session` (HttpOnly, SameSite=Strict, Path=/api, Secure on https, 30 days, extended at most hourly when used); only the SHA-256 is stored; password change/reset and user removal revoke sessions |
+| CSRF | non-GET account requests need `Content-Type: application/json` and, when the browser sends one, a same-origin `Origin` |
+| Brute force | sign-in: 10 failures per username and 30 per IP in 15 minutes; sign-up: 20 failed invite attempts per IP per hour |
+| Invites | 12 characters without look-alikes (about 59 bits), stored hashed, shown once; created and counted in one D1 batch with the account (simultaneous sign-ups cannot both use a single-use code) |
+| First admin | `ADMIN_USERNAME` / `ADMIN_PASSWORD` create the admin on its first sign-in while no admin exists; afterwards the database decides; the name is reserved for sign-up |
+| Responses | `no-store`; never hashes, tokens or (after creation) invite codes |
+
+**Sync** (`public/js/account.js`, rules in `public/js/sync-merge.js`). The library is one JSON document: history, lists with their items, resume positions, synced settings (never the gateway address or token), plus **tombstones** for removals. Every item and tombstone carries the time it changed; merging keeps the newest of the item and its tombstone (last-writer-wins per item), so a removal on one device is not undone by an older copy elsewhere, while watching a title again after removing it brings it back. A deleted list stays deleted unless it was changed after the deletion. The merge is commutative, associative and idempotent (property-tested), so devices converge in any order. Caps: 40 history items, 50 lists, 500 items per list, 300 resume positions, 500 tombstones per kind, 512 KB per document.
+
+The client pulls on sign-in, when the page becomes visible, when the device comes back online and every 5 minutes; it pushes 1.5 s after a change (30 s when only resume positions changed), on conflict merges the server copy and retries. Applying the server copy is not treated as a local change (no loop). Signing in merges what was on the device into the account; signing out (after a confirmation) removes the account's data from the device so the next person on a shared phone sees nothing. The storage format changed from a `history` array and a single `list` array to `library`; old data is migrated on first read.
+
+**Known limits.** Item times come from each device's clock: a device whose clock is far wrong can win or lose a conflict it should not. With more than 500 removals, the oldest tombstones are dropped, and a device that has been offline since then can bring those items back. A live D1 database on Cloudflare and the free plan's CPU limit for password hashing were not exercised (README *Accounts*). There is no e-mail: a forgotten password is reset by an admin.

@@ -1,7 +1,7 @@
 import { h, mount, imgUrl, srcset, runtimeText, formatDate, progressKey, clamp } from '../util.js';
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { card, personCard, rail, icon, toast } from './components.js';
+import { card, personCard, rail, icon, toast, openSheet, toggleRow } from './components.js';
 import { errorNotice } from './home.js';
 import { hrefWatch, href } from '../router.js';
 import { openSources } from './sources.js';
@@ -9,13 +9,39 @@ import { BRAND } from '../brand.js';
 
 const metaOf = (d, season, episode) => ({ type: d.type, tmdbId: String(d.id), title: d.title, year: d.year, imdbId: d.imdbId || '', season, episode });
 
+/** + / check button: opens "Save to list" (a switch per list, and a field to start a new one). */
 function listButton(d) {
-  const on = () => store.inList(d.type, d.id);
-  const btn = h('button', { class: `iconbtn${on() ? ' on' : ''}`, type: 'button', 'aria-pressed': String(on()), 'aria-label': on() ? 'Remove from My List' : 'Add to My List' });
-  const paint = () => { btn.replaceChildren(icon(on() ? 'check' : 'plus')); btn.className = `iconbtn${on() ? ' on' : ''}`; btn.setAttribute('aria-pressed', String(on())); btn.setAttribute('aria-label', on() ? 'Remove from My List' : 'Add to My List'); };
-  btn.addEventListener('click', () => { const added = store.toggleList({ type: d.type, id: d.id, title: d.title, year: d.year, poster: d.poster, rating: d.rating }); paint(); toast(added ? 'Added to My List' : 'Removed from My List'); });
+  const on = () => store.inAnyList(d.type, d.id);
+  const btn = h('button', { class: 'iconbtn', type: 'button', 'aria-haspopup': 'dialog' });
+  const paint = () => { btn.replaceChildren(icon(on() ? 'check' : 'plus')); btn.className = `iconbtn${on() ? ' on' : ''}`; btn.setAttribute('aria-label', on() ? 'Saved to a list: change lists' : 'Save to a list'); };
+  btn.addEventListener('click', () => saveSheet(d, paint));
   paint();
   return btn;
+}
+
+function saveSheet(d, onDone) {
+  const item = { type: d.type, id: d.id, title: d.title, year: d.year, poster: d.poster, rating: d.rating };
+  const sheet = openSheet({ title: 'Save to list', subtitle: d.title, onClose: onDone });
+  const rows = h('div', { class: 'stack' });
+  const drawRows = () => mount(rows, store.lists().map((l) => toggleRow(l.name, null, store.listsWith(d.type, d.id).includes(l.id), (checked) => {
+    if (checked) store.addToList(l.id, item); else store.removeFromList(l.id, d.type, d.id);
+    toast(checked ? `Saved to ${l.name}` : `Removed from ${l.name}`);
+  })));
+  const input = h('input', { class: 'field', type: 'text', maxlength: 60, placeholder: 'New list name', 'aria-label': 'New list name', autocomplete: 'off' });
+  const msg = h('p', { class: 'err-text', role: 'alert' });
+  const form = h('form', { class: 'form', novalidate: true }, h('div', { class: 'row' }, input, h('button', { class: 'btn small', type: 'submit' }, icon('plus'), 'Create')), msg);
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    try {
+      const id = store.createList(input.value);
+      store.addToList(id, item);
+      toast(`Saved to ${input.value.trim()}`);
+      input.value = ''; msg.textContent = '';
+      drawRows();
+    } catch (err) { msg.textContent = err.message; input.focus(); }
+  });
+  drawRows();
+  mount(sheet.body, rows, h('h3', null, 'New list'), form);
 }
 
 /** Where "Play" should start for a series: the last episode watched here, otherwise S1E1. */
