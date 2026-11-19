@@ -26,7 +26,7 @@ export async function steps3(ctx) {
     const page = await b.newPage({ width: 1280, height: 900, label: 'gateway' });
     try {
       await open(page, '#/movie/603');
-      // with a gateway, FlixHub and Hexion lookups go through it, and the gateway may reach public hosts:
+      // with a gateway, FlixHub (BDIX) and Hexion lookups go through it, and the gateway may reach public hosts:
       // point them at the local mock so this step never touches the real internet
       await page.evaluate(async (base) => { (await import('/js/providers/fh.js')).endpoints.base = base; (await import('/js/providers/hx.js')).endpoints.base = base; }, bdix.base);
       await waitFor(() => page.$('.dinfo h1'), { what: 'details' });

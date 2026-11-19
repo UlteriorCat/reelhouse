@@ -146,6 +146,38 @@ export async function steps4(ctx) {
     } finally { await page.close(); cdn.close(); gw.close(); }
   });
 
+  await step('fendrix without built-in HLS and no gateway: the watch page gives up fast and explains, instead of spinning forever', async () => {
+    // Reported bug (Nov 2026): "Fendrix: 1 found" but playback never starts. Without built-in HLS the player falls back
+    // to hls.js; its requests carry an Origin, the CDN answers 404, and nothing reported it (no media error event, and
+    // the 25 s watchdog was only armed after the first `canplay`, which never came).
+    const cdn = await startCdn(path.join(MEDIA_DIR, 'hls'));
+    const page = await b.newPage({ width: 1280, height: 800, label: 'fendrix-nohls-nogw', setup: withoutNativeHls });
+    try {
+      await mockFendrixApi(page, cdn.base + '/hls/e2e/master.m3u8');
+      page.__ignoreErrors = /api\.shegu\.st|Failed to load resource|CORS policy/; // hls.js reads the CDN and is refused, as live
+      await open(page, '#/movie/603');
+      await waitFor(() => page.$('.dinfo h1'), { what: 'details' });
+      await page.evaluate((st) => localStorage.setItem('rh:settings', st), ONLY('fendrix'));
+      const t0 = Date.now();
+      await page.evaluate(() => { location.hash = '#/watch/movie/603'; });
+      await waitFor(() => page.$('.watch .banner'), { timeout: 12000, what: 'an explanation banner (not an endless spinner)' });
+      assert.ok(Date.now() - t0 < 12000);
+      const banner = await text(page, '.watch .banner');
+      assert.match(banner, /will not play here/);
+      assert.match(banner, /built-in HLS|gateway/, 'the banner names the reason and the way out: ' + banner);
+      assert.ok(await page.$('.watch .banner a[href^="data:audio/x-mpegurl"]'), 'external player (.m3u) offered');
+      // the player itself stops spinning and says so (the banner can be below the fold on a desktop screen)
+      await waitFor(() => page.$('.stage .rh-fail'), { what: 'message in the player' });
+      assert.match(await text(page, '.stage .rh-fail'), /will not play here/);
+      assert.equal(await page.$eval('.art-loading', (e) => getComputedStyle(e).display), 'none', 'no endless spinner');
+      await shot(page, 'fendrix-nohls-explained');
+      await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'no horizontal overflow at phone width');
+      await shot(page, 'fendrix-nohls-explained-phone');
+      assert.deepEqual(await b.cspViolations(page), []);
+    } finally { await page.close(); cdn.close(); }
+  });
+
   await step('hexion: 4kHdHub chain via the edge proxy (wrapper -> HubCloud -> file page), size shown, file plays from its host', async () => {
     const mp4 = fs.readFileSync(path.join(MEDIA_DIR, 'test.mp4'));
     const page = await b.newPage({ width: 1280, height: 800, label: 'hexion' });
@@ -179,6 +211,25 @@ export async function steps4(ctx) {
       await page.evaluate(() => { location.hash = '#/watch/movie/603'; });
       await waitPlaying(page, 1.0);
       assert.equal(await video(page, (v) => v.currentSrc), 'https://e2e-media.workers.dev/files/The.Matrix.1999.1080p.WEB-DL.x264.AAC.mp4', 'played straight from the file host');
+      assert.deepEqual(await b.cspViolations(page), []);
+    } finally { app.sources.hexion = false; await page.close(); }
+  });
+
+  await step('hexion blocked at the edge (the site refuses Cloudflare): the chip says "needs gateway" and the notice explains it', async () => {
+    const page = await b.newPage({ width: 1280, height: 900, label: 'hexion-blocked' });
+    await page.setCacheEnabled(false);
+    page.__ignoreErrors = /Failed to load resource: the server responded with a status of 403/;
+    app.sources.hexion = 'blocked';
+    try {
+      await open(page, '#/movie/603');
+      await waitFor(() => page.$('.dinfo h1'), { what: 'details' });
+      await page.evaluate((st) => localStorage.setItem('rh:settings', st), ONLY('hexion'));
+      await page.evaluate(() => { location.hash = '#/watch/movie/603'; });
+      await waitFor(() => page.$('.stage .notice'), { what: 'guidance' });
+      assert.ok(await hasText(page, '.stage .pstat .chip', /^Hexion: needs gateway$/), 'not a vague "server error"');
+      assert.match(await text(page, '.stage .notice'), /refuse.*edge|gateway/i);
+      assert.ok(await hasText(page, '.stage .notice li', /gateway/));
+      await shot(page, 'hexion-blocked');
       assert.deepEqual(await b.cspViolations(page), []);
     } finally { app.sources.hexion = false; await page.close(); }
   });

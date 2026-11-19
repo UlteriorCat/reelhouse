@@ -7,7 +7,7 @@ A fast, streaming-style website for browsing what is trending (TMDB) and playing
 | Discovery | Trending, popular, top-rated rows, search, "Because you watched", Continue watching and History (remove single titles, with Undo), named watch lists (TMDB, free key) |
 | Accounts (optional) | Invite-only sign-up, sign-in, password change; history, lists, resume positions and settings sync across devices; admin page for invite codes and users |
 | Details | Movie / series pages, seasons and episodes, cast, recommendations, trailer link |
-| Streaming | BDIX servers (DhakaFlix, Circle FTP) and online sources (FlixHub, Fendrix, Hexion) are queried **only when you press Play or Download**, never while browsing |
+| Streaming | BDIX servers (DhakaFlix, Circle FTP, FlixHub) and online sources (Fendrix, Hexion) are queried **only when you press Play or Download**, never while browsing |
 | Player | ArtPlayer: MP4, MOV, MKV, WebM, HLS; resume; next episode; source switching; keyboard shortcuts |
 | Subtitles | OpenSubtitles search (official API or keyless fallback), upload your own; size, height, colour and background are adjustable |
 | Download | Separate button on the movie page and on every episode; ranked list of sources with copy-link, VLC/MX/Infuse links and an `.m3u` playlist |
@@ -43,13 +43,15 @@ So there are three connection modes (Settings → Connection):
 | Mode | When it works | Setup |
 |---|---|---|
 | **Direct** (default) | The BDIX server sends CORS headers and the browser allows the request. Chrome/Edge 142+ ask for "local network" permission for private IPs such as `172.16.x.x`; Firefox and Safari block http from https. Public-looking hosts (`new.circleftp.net:5000`, `15.1.1.50`) are blocked from an https page. | none |
-| **Edge proxy** (automatic for FlixHub and Hexion) | Public https sites without CORS; the Pages Function fetches the pages for you. Only the exact hosts in `EDGE_PROXY_HOSTS` are allowed (default in `lib/api.js`: FlixHub and the Hexion/4kHdHub link chain). | none; if Hexion starts showing "server error", its link domains moved: add the new ones to `EDGE_PROXY_HOSTS` |
-| **Gateway** (recommended for BDIX) | Always, if the machine running it is on BDIX. Sets `Referer`/`User-Agent`, adds CORS, streams video with Range support, forces real downloads. | run `node gateway/bdix-gateway.mjs` (below) |
+| **Edge proxy** (automatic for Hexion) | Public https sites without CORS that accept requests from Cloudflare; the Pages Function fetches the pages for you. Only the exact hosts in `EDGE_PROXY_HOSTS` are allowed (default in `lib/api.js`: the Hexion/4kHdHub link chain). **As of Nov 19, 2026 Hexion's sites block Cloudflare** (the app shows "Hexion: needs gateway"): use the gateway for Hexion. | none; if Hexion shows "server error" (not "needs gateway"), its link domains moved: add the new ones to `EDGE_PROXY_HOSTS` |
+| **Gateway** (needed for BDIX on `pages.dev`, and for Hexion) | Always, if the machine running it is on BDIX (for Hexion any internet connection will do). Sets `Referer`/`User-Agent`, adds CORS, streams video with Range support, forces real downloads. | run `node gateway/bdix-gateway.mjs` (below) |
 
-**Online sources (no BDIX needed).** *Fendrix* (Cinejoy/Shegu) is called straight from your browser, never through the gateway; its videos are HLS from a server that refuses in-page players, so they play in browsers with built-in HLS (Chrome/Edge 142+, Safari, iPhone/iPad); in browsers without it (Firefox) they play **when a gateway is set** (the gateway fetches the video and rewrites its playlists), otherwise in an external player (VLC, MX Player via the source's *More* menu). *Hexion* (4kHdHub) is looked up through the edge proxy (or your gateway); its files are large releases, often with Dolby (DD+/DTS) audio that browsers play silently: the app warns and offers the external players. Both can be switched off in Settings → Sources.
+**Online sources (no BDIX needed).** *Fendrix* (Cinejoy/Shegu) is called straight from your browser, never through the gateway; its videos are HLS from a server that refuses in-page players, so they play in browsers with built-in HLS (Chrome/Edge 142+, Safari, iPhone/iPad); in browsers without it (Firefox) they play **when a gateway is set** (the gateway fetches the video and rewrites its playlists), otherwise in an external player (VLC, MX Player via the source's *More* menu). *Hexion* (4kHdHub) is looked up through your gateway (the edge proxy is tried without one, but the sites currently refuse Cloudflare); its files are large releases, often with Dolby (DD+/DTS) audio that browsers play silently: the app warns and offers the external players. Both can be switched off in Settings → Sources.
 
 The app tells you which situation you are in: **Settings → Test connection** reports each host as *reachable*, *reachable but blocked by CORS*, *unreachable*, *gateway token rejected* or *blocked by the gateway*.
 
+> FlixHub is a BDIX server like DhakaFlix and Circle FTP (the original plugin lists it as "FlixHub FTP: BDIX").
+>
 > Not verified: the real BDIX/FlixHub/Circle servers were not reachable from the environment this was built in. Their response formats are taken from what the original scrapers parse (see the provider notes in the implementation doc). Run **Test connection** on your own network first.
 
 ---
@@ -168,9 +170,9 @@ Traffic caveat: through the gateway, video flows *server → gateway → your de
 | Command | What it does |
 |---|---|
 | `npm run dev` | Local server (static + API + `_headers`) |
-| `npm test` | 127 unit and integration tests (server layer, gateway, providers vs. golden output, client logic, router, API client, branding) |
+| `npm test` | 130 unit and integration tests (server layer, gateway, providers vs. golden output, client logic, router, API client, branding) |
 | `npm run e2e:media` | Generates the small test videos (needs `ffmpeg`) |
-| `npm run e2e` | 35 browser end-to-end steps in headless Chromium (real gateway, mock BDIX server, real videos). Add a word to run matching steps only: `npm run e2e -- subtitles` |
+| `npm run e2e` | 37 browser end-to-end steps in headless Chromium (real gateway, mock BDIX server, real videos). Add a word to run matching steps only: `npm run e2e -- subtitles` |
 | `npm run smoke:cf` | Runs the real Cloudflare runtime (`wrangler pages dev` / workerd) against a mock TMDB: 9 Cloudflare runtime checks of the Function, routing and headers |
 | `npm run rebrand` | Syncs `index.html` and the web manifest with `public/js/brand.js` after you change the name or colour |
 | `npm run check:docs` | Checks that the documentation still matches the code (paths, scripts, counts, versions, env vars) |

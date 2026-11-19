@@ -73,7 +73,9 @@ export function watchView({ root, route, signal }) {
     }
     const why = kind === 'video-unsupported' ? 'Your browser cannot decode this video (for example HEVC/H.265).' : kind === 'timeout' ? 'This source did not respond in time.' : 'This source could not be played.';
     if (next) { toast(`${why} Trying another source\u2026`); mount(banners); player.switchTo(next); return; }
-    banner('bad', 'This source will not play here', `${why} No other playable source was found.`, [...externalActions(stream), h('button', { class: 'btn small', type: 'button', onClick: () => openSourcesSheet() }, 'All sources')]);
+    const known = stream.play && stream.play.reasons && stream.play.reasons.length ? ` ${stream.play.reasons.join('. ')}.` : '';
+    player.fail('This source will not play here. See below for other ways to watch.');
+    banner('bad', 'This source will not play here', `${why}${known} No other playable source was found.`, [...externalActions(stream), h('button', { class: 'btn small', type: 'button', onClick: () => openSourcesSheet() }, 'All sources')]);
   }
 
   // ---------------- subtitles ----------------

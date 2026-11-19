@@ -74,6 +74,8 @@ export function createMockFetch({ mediaBase = 'http://127.0.0.1:1', log = [], so
     }
     const html = (body) => new Response(`<html><body>${body}</body></html>`, { headers: { 'content-type': 'text/html' } });
     if (url.hostname === '4khdhub.one') {
+      // what the live site answers when the request comes from Cloudflare's network (measured Nov 2026)
+      if (sources.hexion === 'blocked') return new Response('error code: 1106', { status: 403, headers: { 'content-type': 'text/plain' } });
       if (!sources.hexion) return p === '/' ? html('<p>Nothing found</p>') : new Response('not found', { status: 404 });
       if (p === '/' && url.searchParams.get('s') === 'The Matrix 1999') return html('<a href="/the-matrix-movie-1/" class="movie-card"><h3 class="movie-card-title">The Matrix</h3><p class="movie-card-meta">1999</p><span class="movie-card-format">Movies</span></a>');
       if (p === '/the-matrix-movie-1/') return html('<div class="download-item"><div class="file-title">The Matrix (1999) 1080p WEB-DL x264 AAC [1.4 GB]</div><a href="https://greenmotors.club/?id=m1">Download HubCloud</a></div>');

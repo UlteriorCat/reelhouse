@@ -44,7 +44,7 @@ try {
     assert.deepEqual(m.rails, ['Trending today', 'Popular movies', 'Popular series', 'Top rated movies', 'Top rated series']);
     assert.ok(m.hero && m.hero.length > 2); assert.equal(m.persons, 0);
     assert.equal(bdix.log.length, 0, 'no BDIX request before the user clicks Play/Download');
-    assert.ok(!app.mockLog.some((l) => l.includes('flixhub')), 'edge proxy not used before a click');
+    assert.ok(!app.mockLog.some((l) => l.includes('4khdhub') || l.includes('flixhub')), 'edge proxy not used before a click');
     assert.deepEqual(await b.cspViolations(page), []);
     await page.close();
   });
@@ -164,7 +164,8 @@ try {
     assert.ok(posts.every((r) => r.headers['content-type'] === 'application/json'));
     assert.deepEqual(posts.map((p) => JSON.parse(p.body).search.pattern).sort(), ['The.Matrix', 'The.Matrix', 'The\\ Matrix', 'The\\ Matrix']);
     assert.ok(bdix.log.some((r) => r.path.startsWith('/api/posts?searchTerm=The%20Matrix')), 'Circle search');
-    assert.ok(app.mockLog.some((l) => l === 'flixhub.net/watch/movie/the-matrix'), 'FlixHub fetched through the edge proxy');
+    assert.ok(bdix.log.some((r) => r.path === '/watch/movie/the-matrix'), 'FlixHub (a BDIX server) fetched by the browser');
+    assert.ok(!app.mockLog.some((l) => l.includes('flixhub')), 'FlixHub never through the Cloudflare edge proxy');
     const chips = await page.$$eval('.pstat .chip', (e) => e.map((x) => x.textContent));
     assert.deepEqual(chips, ['DhakaFlix: 5 found', 'Circle FTP: 1 found', 'FlixHub: 1 found', 'Fendrix: no match', 'Hexion: no match'], 'online sources are asked too (in this test neither has the title)');
     const t = await page.$$eval('.ticket', (els) => els.map((e) => ({ name: e.querySelector('.name').textContent, q: e.querySelector('.stub b').textContent, level: e.dataset.level, tags: [...e.querySelectorAll('.tag')].map((x) => x.textContent) })));

@@ -30,7 +30,8 @@ const BB = [
 ];
 const CONTENT_TYPES = { '.mp4': 'video/mp4', '.mov': 'application/octet-stream', '.mkv': 'application/octet-stream', '.webm': 'video/webm' };
 
-/** One server that speaks DhakaFlix (/DHAKA-FLIX-12|14/), the Circle FTP API (/api/posts) and serves media with Range support. */
+/** One server that speaks DhakaFlix (/DHAKA-FLIX-12|14/), the Circle FTP API (/api/posts), FlixHub watch pages (/watch/...)
+ * and serves media with Range support. All three are BDIX servers, so the browser (or the gateway) talks to them. */
 export function createBdixMock({ cors = true } = {}) {
   const log = [];
   const state = { cors, down: false };
@@ -59,6 +60,7 @@ export function createBdixMock({ cors = true } = {}) {
       if (req.method === 'GET' && url.pathname === '/api/posts') {
         return send(200, url.searchParams.get('searchTerm') === 'The Matrix' ? { posts: [{ id: 11, type: 'singleVideo', title: 'The Matrix (1999) 1080p', name: 'The Matrix', categories: [] }] } : { posts: [] });
       }
+      if (req.method === 'GET' && url.pathname === '/watch/movie/the-matrix') return send(200, `<html><body><video id="theaterPlayer" data-stream-url="http://127.0.0.1:${srv.address().port}/media/test.mp4"></video></body></html>`, 'text/html');
       if (req.method === 'GET' && url.pathname === '/api/posts/11') return send(200, { post: { type: 'singleVideo', title: 'The Matrix (1999) 1080p', content: `http://127.0.0.1:${srv.address().port}/media/test.mp4` } });
       if (req.method === 'GET' && url.pathname === '/') return send(200, 'ok', 'text/plain');
 
@@ -158,7 +160,7 @@ export const shot = async (page, name) => { const f = path.join(SHOTS, name + '.
 /** Point the provider modules at the mock BDIX server (same module instances the app uses). */
 export async function repointProviders(page, base) {
   await page.evaluate(async (b) => {
-    const df = await import('/js/providers/df.js'); const cf = await import('/js/providers/cf.js');
-    df.SERVERS[0].url = b; df.SERVERS[1].url = b; cf.endpoints.primary = b; cf.endpoints.fallback = b;
+    const df = await import('/js/providers/df.js'); const cf = await import('/js/providers/cf.js'); const fh = await import('/js/providers/fh.js');
+    df.SERVERS[0].url = b; df.SERVERS[1].url = b; cf.endpoints.primary = b; cf.endpoints.fallback = b; fh.endpoints.base = b;
   }, base);
 }

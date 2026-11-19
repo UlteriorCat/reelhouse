@@ -16,7 +16,12 @@ export function makeCtx(net, provider, signal) {
     ctx.attempts++;
     try {
       const res = await net.request(url, { ...init, signal, provider });
-      if (!res.ok) { ctx.http++; return null; }
+      if (!res.ok) {
+        ctx.http++;
+        // site refused Cloudflare (lib/api.js blockedByCloudflare)
+        if (res.headers && res.headers.get('x-upstream-blocked')) ctx.blocked++;
+        return null;
+      }
       return await read(res);
     } catch (e) {
       if (e && (e.name === 'AbortError' || e.name === 'TimeoutError')) throw e;
@@ -25,7 +30,7 @@ export function makeCtx(net, provider, signal) {
     }
   }
   const ctx = {
-    attempts: 0, network: 0, http: 0,
+    attempts: 0, network: 0, http: 0, blocked: 0,
     text: (url, init = {}) => fetchOk(url, init, (r) => r.text()),
     /** Raw response bytes (Uint8Array). Use for binary payloads: text() would replace invalid UTF-8 with U+FFFD. */
     bytes: (url, init = {}) => fetchOk(url, init, async (r) => new Uint8Array(await r.arrayBuffer())),
@@ -41,6 +46,8 @@ export function makeCtx(net, provider, signal) {
 /** Why did a provider return nothing? */
 export function classify(ctx, count) {
   if (count > 0) return 'ok';
+  // nothing got through and the site refused the edge proxy: only the gateway can help
+  if (ctx.blocked > 0 && ctx.network + ctx.http === ctx.attempts) return 'blocked';
   if (ctx.attempts > 0 && ctx.network === ctx.attempts) return 'unreachable'; // every request failed at the network level
   if (ctx.attempts > 0 && ctx.network + ctx.http === ctx.attempts) return 'error'; // servers answered with errors only
   return 'empty'; // servers answered fine, nothing matched

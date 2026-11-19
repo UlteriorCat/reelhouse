@@ -123,7 +123,7 @@ The golden file is data recorded from the GPL-3.0 originals (see `NOTICE.md`). R
 * **Failure capture**: any browser `console.error` or `pageerror` (except expected 404/5xx resource noise, and except pages flagged `__expectErrors` for deliberate failure injection) and any `securitypolicyviolation` fails the run.
 * **Screenshots** are written to `e2e/screenshots/` (git-ignored) at 390, 820 and 1440 px and for key states; they are reviewed by eye, not compared pixel-wise.
 
-### Steps (35)
+### Steps (37)
 
 | # | Step | Key assertions |
 |---|---|---|
@@ -132,7 +132,7 @@ The golden file is data recorded from the GPL-3.0 originals (see `NOTICE.md`). R
 | 5 | search | live search from the top bar; titles match the query; empty state; phone has its own field and desktop hides it |
 | 6 | movie details | TMDB data (runtime, year, genres, 14 cast, recommendations, trailer link `rel=noopener noreferrer`); **no BDIX traffic**; My List persists across reload and shows on the list page |
 | 7 | series details | specials hidden, 7 then 13 episodes, season kept in the URL, episode without a still renders, per-episode Play and Download, no BDIX traffic |
-| 8 | download sheet | queried only after the click; exactly 4 parallel DhakaFlix POSTs with the expected patterns and JSON content type; Circle search; FlixHub via the edge proxy; chips; ticket ranking (best playable first, HEVC last); warnings; `.mov` listed; anchor `href`, `download`, `target`, `rel`; Copy link via the Clipboard API **and** via the `execCommand` fallback; `.m3u` content; Escape closes |
+| 8 | download sheet | queried only after the click; exactly 4 parallel DhakaFlix POSTs with the expected patterns and JSON content type; Circle search; FlixHub fetched by the browser from the BDIX mock (never through the edge proxy, it is a BDIX server); chips; ticket ranking (best playable first, HEVC last); warnings; `.mov` listed; anchor `href`, `download`, `target`, `rel`; Copy link via the Clipboard API **and** via the `execCommand` fallback; `.m3u` content; Escape closes |
 | 9 | play | best **playable** source chosen (not the 2160p HEVC); 640 px wide video; decoded audio bytes > 0; no banner; history saved; no CSP violations |
 | 10 | resume | position saved on native pause; Continue watching card shows 40 % bar and `S1 E2`; episode row progress; "Continue S1 E2"; position restored after reload |
 | 11 | next episode | control present; ending the file auto-advances to episode 3 and plays |
@@ -152,14 +152,16 @@ The golden file is data recorded from the GPL-3.0 originals (see `NOTICE.md`). R
 | 25 | mobile | phone portrait keeps 16:9, 3 toolbar buttons; landscape fits the height; tablet and phone details have no overflow |
 | 26 | Fendrix | gateway configured but unused; session + sealed reply answered in the browser, decrypted, POST without Content-Type; local CDN that 404s any request with an Origin: the lookup's own master read is refused, the master is offered and plays through built-in HLS with sound; a page `fetch` of it gets 404; ticket "Fendrix (Nebula)" |
 | 27 | Fendrix without built-in HLS | `canPlayType` hides HLS like Firefox: without a gateway the ticket is "Unlikely to play here" with the gateway hint; with the real gateway it plays through hls.js (Media Source, sound decoded), playlists fetched via `/s?hls=1`, variant and segments reach the Origin-refusing CDN without an Origin, no banner |
-| 28 | Hexion | 4kHdHub chain (search, wrapper, HubCloud, file page) through the edge proxy; one ticket "Hexion (FSL)" with size tag, interstitial link ignored; nothing downloaded during lookup; plays from the file host (HTTP cache off: edge replies are cacheable) |
-| 29 | online + BDIX down | BDIX guidance shown, plus the hint that the online sources did not answer either |
-| 30 | history | remove from Continue watching, Undo restores in place, removal saved; History page: remove, Clear (Cancel keeps, confirm empties; count is current) |
-| 31 | lists | save sheet: switch per list, create list (duplicate name refused inline), saved state; Lists page: rename, remove with Undo, My List undeletable, delete with confirmation; list rails on home; phone without overflow |
-| 32 | accounts | admin first sign-in from secrets; Admin page; invite generated (shown once) and listed; second profile signs up (wrong code and mismatched passwords explained), invite then shown used; no Admin link for users |
-| 33 | sync | two profiles of one account: list and history arrive; a removal on one reaches the other and its open page redraws; sign-out confirms, clears the device, ends the session |
-| 34 | passwords + admin | password change (wrong current refused) signs out the other profile; non-admin refused (page and API); admin reset gives a working temporary password and signs the user out; invite disabled; user removed (signed out); admin page on phone |
-| 35 | accounts off | without a database the site works and Settings has no Account section |
+| 28 | Fendrix without built-in HLS, no gateway (the reported bug) | watch page: hls.js is refused by the CDN, the player stops spinning and says so (`.rh-fail`), the banner gives the reason (built-in HLS or gateway) and the external-player `.m3u`, all within 12 s (measured < 1 s); phone width has no overflow |
+| 29 | Hexion | 4kHdHub chain (search, wrapper, HubCloud, file page) through the edge proxy; one ticket "Hexion (FSL)" with size tag, interstitial link ignored; nothing downloaded during lookup; plays from the file host (HTTP cache off: edge replies are cacheable) |
+| 30 | Hexion blocked at the edge | the mock site answers like the live one does to Cloudflare (403 "error code: 1106"): chip "Hexion: needs gateway", notice "This source needs the gateway here" with the gateway hint |
+| 31 | online + BDIX down | BDIX guidance shown, plus the hint that the online sources did not answer either |
+| 32 | history | remove from Continue watching, Undo restores in place, removal saved; History page: remove, Clear (Cancel keeps, confirm empties; count is current) |
+| 33 | lists | save sheet: switch per list, create list (duplicate name refused inline), saved state; Lists page: rename, remove with Undo, My List undeletable, delete with confirmation; list rails on home; phone without overflow |
+| 34 | accounts | admin first sign-in from secrets; Admin page; invite generated (shown once) and listed; second profile signs up (wrong code and mismatched passwords explained), invite then shown used; no Admin link for users |
+| 35 | sync | two profiles of one account: list and history arrive; a removal on one reaches the other and its open page redraws; sign-out confirms, clears the device, ends the session |
+| 36 | passwords + admin | password change (wrong current refused) signs out the other profile; non-admin refused (page and API); admin reset gives a working temporary password and signs the user out; invite disabled; user removed (signed out); admin page on phone |
+| 37 | accounts off | without a database the site works and Settings has no Account section |
 
 ## 8. Cloudflare runtime smoke test
 
@@ -204,6 +206,9 @@ Procedure: edit the code to re-introduce the bug, run `npm test`, confirm exactl
 | Accounts (16 mutations: Origin check, JSON check, admin role, disabled/used/expired invites, session revocation on password change, bootstrap when an admin exists, reserved admin name, login rate limit, session expiry, sliding expiry, self-removal, cross-user sync read, optimistic concurrency, normalization, Secure cookie) | `test/accounts.test.mjs` (3 were first missed and got tests) |
 | Sync engine (conflict not merged, sign-out keeps data, 401 ignored, apply guard removed) | `test/account-sync.test.mjs` (2 were first missed and got tests) |
 | Wait for every endpoint (`Promise.all`) again | `fendrix: a hanging fallback endpoint does not hold back ...` |
+| Player watchdog armed on ArtPlayer `ready` again / fatal hls.js errors not reported (each alone) | E2E step 28 (`fendrix without built-in HLS and no gateway ...`) |
+| FlixHub marked `edge` again / `flixhub.net` back in the default edge list | `FlixHub is a BDIX server ...` / both edge allow-list tests |
+| No `blocked` class in `classify()` / `blockedByCloudflare()` always false / its status guard removed | `failure classification: ... "blocked"` / `edge proxy: a Cloudflare block ...` (the status-guard mutant first survived; the `/ok-lookalike/` case was added for it) |
 
 Also exercised the other way round: editing `brand.js` without running `npm run rebrand` makes `brand: index.html and the web manifest match ...` fail.
 
@@ -238,16 +243,20 @@ Found by testing (not by review), with how it was found and what keeps it fixed.
 | 15 | Fendrix returned nothing in real browsers: its master-playlist read carries an Origin, which the CDN refuses | E2E with a CDN copying the live header rule | offer the master; built-in HLS plays it | E2E step 26, unit deviation test |
 | 16 | Hanging fallback endpoint stalled Fendrix to the timeout; the abandoned request caused an unhandled rejection | harness quirk (CDP cannot send 530) → unit test | prefer-first wait; mark slots handled; orchestrator aborts a provider's leftovers when it answers | unit test + mutation |
 | 17 | Hexion: no `DOMParser` outside a browser, swallowed aborts, none of today's file hosts recognised | unit tests; live run (original finds 0) | port on injected `DOMParser`; `unlessAbort`; documented deviation | parity, deviation, cancel tests |
-| 18 | `imdbId` missing from the lookup meta (watch and details pages) | review against the originals' inputs | pass `d.imdbId` | providers use it in tests; E2E step 27 (search path) |
+| 18 | `imdbId` missing from the lookup meta (watch and details pages) | review against the originals' inputs | pass `d.imdbId` | providers use it in tests; E2E step 29 (search path) |
 | 19 | Off-BDIX with an online source answering "error": guidance said "No matching files" instead of explaining BDIX | tracing the failure-UX step | BDIX and online groups judged separately | E2E steps 17 and 28 |
 | 21 | Gateway HLS: a playlist arriving in a single chunk skipped the size limit | gateway safety test | limit checked on the total | gateway test + mutation |
 | 22 | Sync merge was not commutative: a tombstone with time 0 kept from one side, dropped from the other | property test (300 random cases) | absent-or-newer rule | property test |
-| 23 | Clear-history confirmation counted the titles shown when the page was drawn (also "1 titles") | E2E step 30 | count at click time, singular | E2E step 30 |
+| 23 | Clear-history confirmation counted the titles shown when the page was drawn (also "1 titles") | E2E step 32 | count at click time, singular | E2E step 32 |
 | 24 | Home JS over budget (195 KB > 170 KB) after adding accounts | E2E step 22 | Settings and Admin load on first use (165 KB) | E2E step 22 |
 | 25 | Sync merge dropped items and lists whose time was 0 although no tombstone existed (an empty My List, old data) | a new test written for another reason; convergence properties cannot see it | only an existing tombstone removes | regression test + mutation |
 | 26 | A stored document with `__proto__` keys could set an object's prototype during merge | review | such keys are skipped | test |
-| 27 | UI review by a separate checker (calibrated on a planted difference first): History page showed no empty state after removing the last title; Delete account submit was primary; Admin h1 to h3; admin load errors without retry; copy failure shown as success; Undo 36 px and timed; two wordings of Clear history; Settings Clear history without confirmation; identical "See all" names; focus lost after Undo | ui-consistency check (3 rounds) | all fixed; Undo toasts now persist until used/dismissed/replaced/navigation; keyboard removal focuses Undo, Undo focuses the restored title | E2E steps 30-31 |
-| 20 | E2E not hermetic once online providers existed: gateway step reached live FlixHub/Hexion; edge replies cached across steps | console error + step time (27 s → 2.5 s) | harness answers/aborts provider hosts; endpoints pointed at the mock; cache off in step 27 | harness |
+| 27 | UI review by a separate checker (calibrated on a planted difference first): History page showed no empty state after removing the last title; Delete account submit was primary; Admin h1 to h3; admin load errors without retry; copy failure shown as success; Undo 36 px and timed; two wordings of Clear history; Settings Clear history without confirmation; identical "See all" names; focus lost after Undo | ui-consistency check (3 rounds) | all fixed; Undo toasts now persist until used/dismissed/replaced/navigation; keyboard removal focuses Undo, Undo focuses the restored title | E2E steps 32-33 |
+| 28 | **Endless spinner** when the first source never loads (reported: "Fendrix: 1 found" but nothing plays). The health monitor (and its 25 s timeout) was armed on ArtPlayer's `ready`, which is the first `canplay`; and hls.js failures never fire `<video>` `error`. Without built-in HLS, hls.js asks the Fendrix CDN with an Origin, gets 404, and nothing reported it | user report; reproduced live in Chromium with built-in HLS hidden (45 s at `readyState 0`, no banner) | watchdog armed at creation; fatal hls.js errors reported; the player says it gave up; the banner names the reason | E2E step 28 + 2 mutations |
+| 29 | **FlixHub treated as a public site** and sent through the Cloudflare edge proxy. The original manifest says "FlixHub FTP: BDIX"; `flixhub.net` resolves to a Bangladeshi address; the deployed proxy answered 504 after 10 s, and the Download sheet waited for it | user report (Test connection: FlixHub unreachable while DhakaFlix was reachable); live check of the deployed `/api/proxy` | `group: 'bdix'`, no edge, removed from `DEFAULT_EDGE_PROXY_HOSTS`; the e2e BDIX mock serves its pages | unit + E2E step 8 |
+| 30 | **Hexion reported as "server error"** on the deployment: from Cloudflare's network `4khdhub.one` answers 403 "error code: 1106" and `hubdrive.blog`/`hubcloud.mov` a 403 bot challenge, so the edge proxy can never work for it | live check of the deployed `/api/proxy` (Nov 19, 2026) | the proxy marks Cloudflare blocks (`x-upstream-blocked`), new provider state `blocked` ("needs gateway") with an explanation | unit + E2E step 30 |
+| 31 | App JS over budget (170.2 KB) after these fixes | E2E step 22 | shorter comments (the reasons are in IMPLEMENTATION) | E2E step 22 |
+| 20 | E2E not hermetic once online providers existed: gateway step reached live FlixHub/Hexion; edge replies cached across steps | console error + step time (27 s → 2.5 s) | harness answers/aborts provider hosts; endpoints pointed at the mock; cache off in the Hexion steps (29, 30) | harness |
 | 13 | UX polish: hero hid the first rail; toolbar wrapped; notice headings dim inside sheets; subtitle tooltip ran into its label | screenshot review | CSS and label changes | screenshots, E2E step 25 |
 
 Test-side mistakes (not product bugs) were also found and corrected, e.g. a tautological assertion, a selector that matched the wrong button, ICU naming `bn` "Bangla", counting tickets after URL de-duplication, an orphaned `wrangler`. They are listed so the same traps are recognised quickly.
@@ -256,22 +265,22 @@ Test-side mistakes (not product bugs) were also found and corrected, e.g. a taut
 
 | Suite | Result |
 |---|---|
-| `npm test` | 127 tests pass |
-| `npm run e2e` | 35 steps pass; no browser console errors (step 26 allows exactly the fallback endpoint's CORS error); no CSP violations |
+| `npm test` | 130 tests pass |
+| `npm run e2e` | 37 steps pass; no browser console errors (steps 26-28 allow exactly the fallback endpoint's CORS error, and step 28 the CDN's refusal of hls.js, which is the case under test); no CSP violations |
 | `npm run smoke:cf` | 9 checks pass |
 | `npm run check:docs` | passes |
 | Clean-room reproduction | extract the zip, `npm ci`, `npm test`, `npm run build:vendor` (bundles identical to the committed ones), `npm run e2e:media`, `npm run e2e`, `npm run smoke:cf` |
 
-Measured on the home page (desktop, local server, printed by E2E step 22): 72 requests, app JS 165 KB as served to the browser (200 KB across all 31 modules on disk, 61 KB gzipped; Settings, account screens and Admin load on first use), CSS 21 KB, font 40 KB, `DOMContentLoaded` 130-190 ms. Player libraries are not requested on the home page.
+Measured on the home page (desktop, local server, printed by E2E step 22): 72 requests, app JS 169 KB as served to the browser (budget 170 KB: little headroom left; 205 KB across all 31 modules on disk, 62 KB gzipped; Settings, account screens and Admin load on first use), CSS 24 KB, font 40 KB, `DOMContentLoaded` 130-190 ms. Player libraries are not requested on the home page.
 
 ## 14. Not verified (and how to verify it yourself)
 
 | Not verified | Why | How to check |
 |---|---|---|
-| Fendrix and Hexion on a real deployment | checked live from the sandbox in Node and Chromium (section 18), but not from Cloudflare's edge (Hexion's sites may block it), not in real Firefox (simulated in Chromium by hiding built-in HLS; with a gateway it plays via hls.js) or on phones | Open a popular title on your deployed site; Settings → Test connection shows both rows |
-| Real BDIX servers, FlixHub, Circle FTP | unreachable from the build sandbox; response shapes come from the original parsers | On your network: deploy or run `npm run dev`, open **Settings → Test connection**, then play a title you know exists |
+| Fendrix and Hexion on a real deployment | checked live from the sandbox in Node and Chromium (section 18); from Cloudflare's edge Hexion is **blocked** (measured, section 18), so on `pages.dev` it needs the gateway; Fendrix playback in your own browser was not observed; not in real Firefox (simulated in Chromium by hiding built-in HLS; with a gateway it plays via hls.js) or on phones | Open a popular title on your deployed site; Settings → Test connection shows both rows |
+| Real BDIX servers (DhakaFlix, Circle FTP, FlixHub) | unreachable from the build sandbox; response shapes come from the original parsers | On your network: deploy or run `npm run dev`, open **Settings → Test connection**, then play a title you know exists |
 | Real TMDB and OpenSubtitles | blocked from the sandbox; mocked with documented shapes | Set your keys; open Home; play something; check Subtitles |
-| A real Cloudflare deployment, edge caching, quotas | only the local runtime was used | Deploy; watch the Functions analytics |
+| A real Cloudflare deployment, edge caching, quotas | the deployed site was only read (public GETs: `/api/health`, `/api/proxy`, section 18); nothing was deployed from here | Deploy; watch the Functions analytics |
 | Firefox and Safari | only Chromium was automated | Manual pass: playback, MKV (Safari cannot), subtitles, hotkeys, copy link |
 | https `pages.dev` + gateway on `http://127.0.0.1` / LAN, Chrome's permission prompt | tests ran over http on loopback | Follow the README gateway section from your deployed site |
 | Real phones and touch gestures | emulated viewport only | Test on your phone: layout, player controls, external-player links |
@@ -329,6 +338,19 @@ Done by hand from the sandbox, not part of any test (tests never reach the inter
 | Port `hx.js` through the real `/api/proxy` handler (Node) | Inception 7 streams (2160p/1080p, 6.6-66 GB), Breaking Bad S01E01 4 streams incl. one signed R2 URL |
 | `*.workers.dev` file links, 1 KB range | one `206 video/x-matroska`, `ACAO: *`; six `403` "download quota exceeded" (upstream Google Drive quota) |
 | `pixel.hubcloud.*` link | redirects to an HTML download interstitial, not a file (skipped) |
+
+**Nov 19, 2026 (bug report: Fendrix found but never plays, Hexion and BDIX unreachable).** Public GETs only, against the owner's deployment and the live hosts:
+
+| Check | Result |
+|---|---|
+| Fendrix CDN (master, variant playlist, `init.mp4`, segment), 100-byte range | no Origin 206; Origin `https://cinejoy.pk` 206; Origin `https://raftv.pages.dev` **404**: an Origin allow-list, not "any Origin" |
+| Fendrix in Chromium 153 (`canPlayType` HLS "maybe"), real lookup, The Matrix | plays the master via built-in HLS (1920 px, 36 s played) |
+| Same with built-in HLS hidden (Firefox-like, no gateway), before the fix | hls.js refused (404 shown as CORS), video at `readyState 0` after 45 s, **no banner**: the reported hang. After the fix: explained in about 1 s |
+| Deployed `/api/proxy` → `4khdhub.one` (search, movie page, WP API) | **403 "error code: 1106"** (Cloudflare-to-site block) |
+| Deployed `/api/proxy` → `hubdrive.blog`, `hubcloud.mov` | **403 "Just a moment..."** challenge; `gamerxyt.com` 200 |
+| Deployed `/api/proxy` → `flixhub.net` | 504 after 10 s; `flixhub.net` resolves to 103.123.169.192 (Bangladesh), unreachable from the sandbox too |
+| Hexion port through the **real gateway** (Node, sandbox connection), The Matrix | 8 streams in 3.4 s |
+| Original bdix-df/cf/fh files vs. the plugin's assets in `eclipsia-bdix` | identical (the golden parity test runs these) |
 
 ## 19. Accounts in the real Cloudflare runtime
 
