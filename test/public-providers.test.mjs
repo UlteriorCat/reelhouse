@@ -188,12 +188,32 @@ test('fendrix: goes straight from the browser even when a gateway is configured;
   assert.match(net.mediaUrl({ url: 'http://172.16.50.12/a.mkv', headers: {} }), /^http:\/\/127\.0\.0\.1:8787\/s\?/, 'BDIX media still uses the gateway');
 });
 
+test('mediaUrl: Fendrix HLS goes through the gateway only for the in-page player in browsers without built-in HLS', () => {
+  const fend = { url: 'https://cdn.test/hls/a/master.m3u8', container: 'm3u8', direct: true, needsNativeHls: true, headers: { Origin: 'https://cinejoy.pk', Referer: 'https://cinejoy.pk/' } };
+  const mk = (gatewayUrl, native) => createNet(() => ({ gatewayUrl, gatewayToken: 'tok' }), async () => new Response(''), { nativeHls: () => native });
+  const firefoxGw = mk('http://127.0.0.1:8787', false);
+  const u = new URL(firefoxGw.mediaUrl(fend, { player: true }));
+  assert.equal(u.origin + u.pathname, 'http://127.0.0.1:8787/s');
+  assert.equal(u.searchParams.get('u'), fend.url); assert.equal(u.searchParams.get('k'), 'tok'); assert.equal(u.searchParams.get('hls'), '1');
+  assert.deepEqual(JSON.parse(Buffer.from(u.searchParams.get('h'), 'base64url').toString()), fend.headers, 'the gateway gets the Referer (it drops Origin itself)');
+  assert.equal(firefoxGw.mediaUrl(fend), fend.url, 'external players / copy link stay direct: they send no Origin');
+  assert.equal(firefoxGw.mediaUrl(fend, { player: true, download: true }), fend.url, 'never a download through this path');
+  assert.equal(mk('http://127.0.0.1:8787', true).mediaUrl(fend, { player: true }), fend.url, 'built-in HLS: direct, no detour');
+  assert.equal(mk('', false).mediaUrl(fend, { player: true }), fend.url, 'no gateway: nothing to route through');
+  assert.equal(firefoxGw.mediaUrl({ ...fend, needsNativeHls: false }, { player: true }), fend.url, 'other direct streams (Hexion files) stay direct');
+  const bdixHls = new URL(firefoxGw.mediaUrl({ url: 'http://172.16.50.12/a/index.m3u8', container: 'm3u8', headers: {} }, { player: true }));
+  assert.equal(bdixHls.searchParams.get('hls'), '1', 'any HLS through the gateway gets its playlists rewritten');
+  assert.equal(new URL(firefoxGw.mediaUrl({ url: 'http://172.16.50.12/a.mkv', container: 'mkv', headers: {} })).searchParams.get('hls'), null);
+});
+
 test('playability: Fendrix HLS needs built-in HLS (its CDN rejects page origins); VC-1 is flagged', () => {
   const s = { container: 'm3u8', needsNativeHls: true, info: {} };
   assert.equal(playability(s, { nativeHls: true }).level, 'ok');
   const no = playability(s, { nativeHls: false });
   assert.equal(no.level, 'bad'); assert.match(no.reasons[0], /built-in HLS/);
   assert.equal(playability({ container: 'm3u8', info: {} }, { nativeHls: false }).level, 'ok', 'other HLS sources are unaffected');
+  assert.equal(playability(s, { nativeHls: false, gateway: true }).level, 'ok', 'with a gateway it plays (through the gateway)');
+  assert.match(no.reasons[0], /gateway/, 'the reason tells the user about the gateway option');
   assert.equal(playability({ container: 'mkv', info: { video: 'vc1', audio: [] } }, { mkv: true }).level, 'bad');
   const ranked = rank([{ ...s, height: 2160, provider: 'fendrix' }, { container: 'mp4', height: 720, info: {}, provider: 'bdix-df' }], { nativeHls: false, mkv: true });
   assert.equal(ranked[0].provider, 'bdix-df', 'a stream this browser can play goes first');

@@ -30,7 +30,7 @@ export async function createPlayer(o) {
   let metaTimer = null;
   let cleanupMonitor = () => {};
 
-  const urlFor = (s) => o.net.mediaUrl(s);
+  const urlFor = (s) => o.net.mediaUrl(s, { player: true });
   const nativeHls = () => document.createElement('video').canPlayType('application/vnd.apple.mpegurl') !== '';
 
   const art = new Art({

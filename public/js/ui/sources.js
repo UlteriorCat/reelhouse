@@ -11,12 +11,13 @@ const cache = new Map();
 export const metaKey = (m) => `${m.type}:${m.tmdbId}:${m.season || ''}:${m.episode || ''}`;
 
 export async function lookupSources(meta, { signal, onProgress, force = false, settleMs = 0 } = {}) {
-  const key = metaKey(meta);
+  const s = store.settings();
+  const gw = !!String(s.gatewayUrl || '').trim();
+  const key = metaKey(meta) + (gw ? '|gw' : ''); // ranking depends on the gateway (Fendrix HLS without built-in HLS)
   const hit = cache.get(key);
   if (!force && hit && Date.now() - hit.t < CACHE_MS) return hit.out;
-  const s = store.settings();
   const res = await resolveStreams(meta, { net, enabled: s.providers, signal, onProgress, compat: s.compat, settleMs });
-  const out = { streams: rank(res.streams, caps(), { preferCompatible: s.preferCompatible }), status: res.status, partial: res.partial };
+  const out = { streams: rank(res.streams, { ...caps(), gateway: gw }, { preferCompatible: s.preferCompatible }), status: res.status, partial: res.partial };
   if (!(signal && signal.aborted) && out.streams.length && !out.partial) cache.set(key, { t: Date.now(), out });
   return out;
 }

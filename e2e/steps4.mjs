@@ -33,8 +33,29 @@ async function sealedSession(streams) {
   return { request: webcrypto.getRandomValues(new Uint8Array(40)), sealed: Buffer.from([...iv, ...ct]), session: { status: 200, result: { data: '', state: { responseKey: b64(key), aad: b64(aad) } } } };
 }
 
+/** Answers the Fendrix API hosts in the browser: one sealed session whose stream list points at `playlist`. */
+async function mockFendrixApi(page, playlist, seen = []) {
+  const s = await sealedSession([{ type: 'hls', id: 'primary', playlist, captions: [] }]);
+  s.session.result.data = Buffer.from(s.request).toString('base64');
+  const cors = { 'access-control-allow-origin': '*' };
+  const prev = page.__intercept;
+  page.__intercept = (r, u) => {
+    if (u.hostname === 'enc-dec.app') { seen.push('enc-dec'); r.respond({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(s.session) }); return true; }
+    if (u.hostname === 'api.wing.st') { seen.push('wing'); r.respond({ status: 200, contentType: 'application/octet-stream', headers: cors, body: s.sealed }); return true; }
+    if (u.hostname === 'api.shegu.st') { r.respond({ status: 502, contentType: 'text/html', body: 'origin down' }); return true; }
+    return prev ? prev(r, u) : false;
+  };
+  page.__ignoreErrors = /api\.shegu\.st|^Failed to load resource: net::ERR_FAILED$/;
+  return seen;
+}
+/** Make Chromium report no built-in HLS, like Firefox (the app and the player both decide by canPlayType). */
+const withoutNativeHls = (page) => page.evaluateOnNewDocument(() => {
+  const orig = HTMLMediaElement.prototype.canPlayType;
+  HTMLMediaElement.prototype.canPlayType = function (t) { return /mpegurl/i.test(t) ? '' : orig.call(this, t); };
+});
+
 export async function steps4(ctx) {
-  const { step, assert, b, bdix, app, open, waitFor, shot, MEDIA_DIR } = ctx;
+  const { step, assert, b, bdix, app, open, waitFor, shot, MEDIA_DIR, startGateway } = ctx;
 
   await step('fendrix: encrypted lookup straight from the browser (even with a gateway set); HLS from a CDN that refuses page origins plays through built-in HLS', async () => {
     const cdn = await startCdn(path.join(MEDIA_DIR, 'hls'));
@@ -84,6 +105,45 @@ export async function steps4(ctx) {
       await shot(page, 'fendrix-sources');
       assert.deepEqual(await b.cspViolations(page), []);
     } finally { await page.close(); cdn.close(); }
+  });
+
+  await step('fendrix without built-in HLS (Firefox-like): flagged with the gateway hint; with a gateway it plays through hls.js, playlists rewritten', async () => {
+    const cdn = await startCdn(path.join(MEDIA_DIR, 'hls'));
+    const gw = await startGateway({ origin: app.origin });
+    const page = await b.newPage({ width: 1280, height: 800, label: 'fendrix-nohls', setup: withoutNativeHls });
+    try {
+      await mockFendrixApi(page, cdn.base + '/hls/e2e/master.m3u8');
+      await open(page, '#/movie/603');
+      await waitFor(() => page.$('.dinfo h1'), { what: 'details' });
+      assert.equal(await page.evaluate(() => document.createElement('video').canPlayType('application/vnd.apple.mpegurl')), '', 'no built-in HLS in this page');
+      // 1) no gateway: the source is honestly marked and the reason names the way out
+      await page.evaluate((st) => localStorage.setItem('rh:settings', st), ONLY('fendrix'));
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((x) => /Download/.test(x.textContent)).click());
+      await waitFor(() => page.$('dialog.sheet .ticket'), { what: 'tickets' });
+      assert.equal(await page.$eval('dialog.sheet .ticket', (e) => e.dataset.level), 'bad');
+      assert.match(await text(page, 'dialog.sheet .ticket .why'), /through the gateway/);
+      await page.keyboard.press('Escape');
+      // 2) with a gateway: plays in the page through hls.js; every CDN request comes from the gateway without an Origin
+      await page.evaluate((st) => localStorage.setItem('rh:settings', st), JSON.stringify({ ...JSON.parse(ONLY('fendrix')), gatewayUrl: gw.url, gatewayToken: gw.token }));
+      cdn.log.length = 0;
+      await page.evaluate(() => { location.hash = '#/watch/movie/603'; });
+      await waitPlaying(page, 1.5);
+      const v = await video(page, (v) => ({ src: v.currentSrc, w: v.videoWidth, audio: v.webkitAudioDecodedByteCount }));
+      assert.match(v.src, /^blob:/, 'Media Source playback (hls.js), not <video src>');
+      assert.equal(v.w, 640); assert.ok(v.audio > 0, 'sound is decoded');
+      assert.ok(cdn.log.some((l) => l.path === '/hls/e2e/1080p/playlist.jpg') && cdn.log.filter((l) => /playlist_\d+\.jpg$/.test(l.path)).length >= 1, 'variant playlist and segments fetched');
+      // only the lookup's own read of the master carries an Origin (refused, as by the real CDN); playback never does
+      assert.ok(cdn.log.filter((l) => l.origin).every((l) => l.path === '/hls/e2e/master.m3u8'), JSON.stringify(cdn.log));
+      assert.ok(cdn.log.filter((l) => l.path !== '/hls/e2e/master.m3u8').every((l) => l.origin === null), 'variant and segments fetched without an Origin');
+      assert.ok(cdn.log.some((l) => l.path === '/hls/e2e/master.m3u8' && l.origin === null), 'the master itself came through the gateway');
+      const loaded = await page.evaluate(() => performance.getEntriesByType('resource').map((e) => e.name));
+      assert.ok(loaded.some((n) => /\/vendor\/hls/.test(n)), 'hls.js was loaded');
+      assert.ok(loaded.some((n) => n.startsWith(gw.url + '/s?') && n.includes('hls=1')), 'playlists requested through the gateway with hls=1');
+      assert.deepEqual([...new Set(loaded.filter((n) => n.startsWith(cdn.base)))], [cdn.base + '/hls/e2e/master.m3u8'], 'the page touched the CDN only for the lookup\u2019s master read');
+      assert.equal(await page.$$eval('.banner', (e) => e.length), 0, 'no error banner');
+      await shot(page, 'fendrix-firefox-gateway');
+      assert.deepEqual(await b.cspViolations(page), []);
+    } finally { await page.close(); cdn.close(); gw.close(); }
   });
 
   await step('hexion: 4kHdHub chain via the edge proxy (wrapper -> HubCloud -> file page), size shown, file plays from its host', async () => {

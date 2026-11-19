@@ -35,7 +35,8 @@ export function playability(stream, caps) {
   if (stream.container === 'mkv' && !caps.mkv) bump('bad', 'This browser cannot open MKV files');
   if (info.video === 'hevc' && !caps.hevc) bump('bad', 'HEVC (H.265) video is not supported by this browser');
   if (info.video === 'xvid') bump('bad', 'XviD video is not supported by browsers');
-  if (stream.needsNativeHls && !caps.nativeHls) bump('bad', 'This server only plays in browsers with built-in HLS (Chrome 142+, Edge, Safari) or in an external player');
+  // caps.gateway: a gateway is configured; it fetches such streams without an Origin (net.mediaUrl, player only)
+  if (stream.needsNativeHls && !caps.nativeHls && !caps.gateway) bump('bad', 'This server only plays in browsers with built-in HLS (Chrome 142+, Edge, Safari), through the gateway (Settings, Connection) or in an external player');
   if (info.video === 'vc1') bump('bad', 'VC-1 video is not supported by browsers');
   if (info.video === 'av1' && !caps.av1) bump('bad', 'AV1 video is not supported by this browser');
   const audio = info.audio || [];

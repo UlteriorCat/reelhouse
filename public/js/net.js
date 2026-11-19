@@ -32,6 +32,7 @@ const b64url = (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').
  */
 export function createNet(getCfg, fetchImpl = (...a) => globalThis.fetch(...a), opts = {}) {
   const edgeBase = opts.edgeBase ?? '';
+  const nativeHls = opts.nativeHls || (() => true); // does this browser play HLS itself (no Origin on media requests)?
   const mode = (provider) => {
     const c = getCfg();
     if (provider && provider.direct) return 'direct';
@@ -60,15 +61,21 @@ export function createNet(getCfg, fetchImpl = (...a) => globalThis.fetch(...a), 
     } finally { t.done(); }
   }
 
-  /** URL to hand to <video> or an <a download>. Through the gateway when configured, else the raw URL. */
-  function mediaUrl(stream, { download = false, filename } = {}) {
+  /**
+   * URL to hand to <video> or an <a download>. Through the gateway when configured, else the raw URL.
+   * `direct` streams skip the gateway, except one case: `player` (the in-page player) asks for an HLS stream whose CDN
+   * refuses page origins (`needsNativeHls`) and this browser has no built-in HLS (Firefox): only the gateway can fetch it.
+   * HLS through the gateway gets `hls=1`, so playlists come back with their URIs rewritten to the gateway as well.
+   */
+  function mediaUrl(stream, { download = false, filename, player = false } = {}) {
     const c = getCfg();
     const gw = trimSlash(c.gatewayUrl);
-    if (!gw || stream.direct) return stream.url;
+    const rescue = player && !download && stream.needsNativeHls && !nativeHls();
+    if (!gw || (stream.direct && !rescue)) return stream.url;
     const p = new URLSearchParams({ u: stream.url });
     if (c.gatewayToken) p.set('k', c.gatewayToken);
     if (stream.headers && Object.keys(stream.headers).length) p.set('h', b64url(JSON.stringify(stream.headers)));
-    if (download) { p.set('dl', '1'); if (filename) p.set('n', filename); }
+    if (download) { p.set('dl', '1'); if (filename) p.set('n', filename); } else if (stream.container === 'm3u8') p.set('hls', '1');
     return `${gw}/s?${p}`;
   }
 

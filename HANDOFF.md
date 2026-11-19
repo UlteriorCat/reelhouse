@@ -4,8 +4,8 @@
 
 ## Status
 
-* Built and tested: 90 unit and integration tests, 28 browser end-to-end steps (real Chromium, real gateway, real video files), 8 Cloudflare runtime checks (real `workerd`). Reproduced from a clean extract.
-* Online sources **Fendrix** and **Hexion** (Nov 2026): ported, checked against the live services from the sandbox (VERIFICATION section 18) and covered by parity tests against the original scraper files. Fendrix plays only with built-in HLS (Chrome/Edge 142+, Safari) or an external player; Hexion's link domains rotate (`EDGE_PROXY_HOSTS`).
+* Built and tested: 93 unit and integration tests, 29 browser end-to-end steps (real Chromium, real gateway, real video files), 8 Cloudflare runtime checks (real `workerd`). Reproduced from a clean extract.
+* Online sources **Fendrix** and **Hexion** (Nov 2026): ported, checked against the live services from the sandbox (VERIFICATION section 18) and covered by parity tests against the original scraper files. Fendrix plays with built-in HLS (Chrome/Edge 142+, Safari), through the gateway in other browsers (Firefox: HLS playlists rewritten, tested with hls.js), or in an external player; Hexion's link domains rotate (`EDGE_PROXY_HOSTS`).
 * **Not verified**: the real BDIX servers, FlixHub, TMDB, OpenSubtitles and a live Cloudflare deployment were unreachable during development (mocks used); Hexion through Cloudflare's own edge; Firefox/Safari; real phones; https `pages.dev` with the gateway. See `VERIFICATION.md` section 14.
 * Key constraint: **Cloudflare cannot reach BDIX**, and an https page cannot freely call http BDIX servers. On `pages.dev` the user normally needs the **gateway** (`gateway/bdix-gateway.mjs`) on their own device or network.
 
@@ -46,7 +46,7 @@ Outside npm: **Node 22+**; **ffmpeg** with libx264/libx265/vpx/aac/ac3/opus for 
 
 ```bash
 npm ci                    # installs everything incl. Chromium and workerd binaries (no other downloads needed)
-npm test                  # 90 tests, ~3 s
+npm test                  # 93 tests, ~3 s
 npm run e2e:media         # once; writes e2e/media/ (git-ignored)
 npm run e2e               # ~4 min; add a word to run matching steps only
 npm run smoke:cf          # ~20 s
@@ -79,7 +79,7 @@ READ FIRST, in this order, before changing anything:
 1. HANDOFF.md  2. CLAUDE.md  3. the sections of docs/IMPLEMENTATION.md that CLAUDE.md maps to
 my task  4. VERIFICATION.md (before touching tests).
 
-SETUP: Node 22+, run `npm ci`, then `npm test` and confirm the baseline (90 passing) before
+SETUP: Node 22+, run `npm ci`, then `npm test` and confirm the baseline (93 passing) before
 you change code. For browser tests run `npm run e2e:media` once (needs ffmpeg), then `npm run e2e`.
 
 TASK: <one or two sentences: what I want, and why>

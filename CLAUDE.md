@@ -78,7 +78,7 @@ Facts to keep in mind: browsers play MOV and MKV (H.264/AAC) fine regardless of 
 
 ## Online sources (Fendrix, Hexion): facts measured live in Nov 2026
 
-* Fendrix: `enc-dec.app` session → `POST api.wing.st/g` returns AES-GCM bytes (read with `ctx.bytes`). Its HLS CDN returns 404 to **any request with an `Origin` header**, so: the master playlist cannot be read from a page (the master itself is offered), hls.js cannot play it, built-in HLS can (`needsNativeHls`, `caps.nativeHls`). `api.shegu.st` answers 530 without CORS: one expected console error per lookup.
+* Fendrix: `enc-dec.app` session → `POST api.wing.st/g` returns AES-GCM bytes (read with `ctx.bytes`). Its HLS CDN returns 404 to **any request with an `Origin` header**, so: the master playlist cannot be read from a page (the master itself is offered), hls.js cannot play it, built-in HLS can (`needsNativeHls`, `caps.nativeHls`). Without built-in HLS and with a gateway, `net.mediaUrl(s, { player: true })` sends it through the gateway's `/s?hls=1`, which rewrites playlist URIs back through itself (`rewritePlaylist`). `api.shegu.st` answers 530 without CORS: one expected console error per lookup.
 * Hexion: `4khdhub.one` → `greenmotors.club` wrapper → `hubdrive.blog`/`hubcloud.mov` → `gamerxyt.com` file page → `*.workers.dev` files. These domains rotate; the original scraper finds nothing on today's pages (deviation documented in IMPLEMENTATION section 6).
 * Both have parity tests that run the original scraper files in a `vm` (`test/public-providers.test.mjs`). E2E never reaches the real internet: the harness answers or aborts the providers' hosts (`PUBLIC_SOURCE_HOSTS` in `e2e/lib.mjs`).
 
@@ -107,7 +107,7 @@ Network reach varies by session: earlier ones reached only npm, PyPI, GitHub and
 ## Useful commands
 
 ```bash
-npm ci && npm test                         # install and run 90 unit/integration tests
+npm ci && npm test                         # install and run 93 unit/integration tests
 npm run dev                                # local site (needs TMDB_API_KEY in .dev.vars)
 npm run e2e:media && npm run e2e           # browser suite (needs ffmpeg; FFMPEG=... if not on PATH)
 npm run e2e -- subtitles                   # run only matching steps
@@ -119,7 +119,7 @@ npm run check:docs                         # docs vs code
 
 ## Known gaps and good next steps
 
-Online sources: Hexion through Cloudflare's real edge (sites may block it); Fendrix playback in Firefox (needs a gateway that rewrites HLS playlists, or an Origin-free path); a Settings field or auto-discovery for rotating Hexion link domains; auto-loading Fendrix captions (the sheet lists them; none were present in the live replies seen).
+Online sources: Hexion through Cloudflare's real edge (sites may block it); Fendrix in Firefox *without* a gateway (no Origin-free path exists in a page; with a gateway it works, untested in real Firefox); a Settings field or auto-discovery for rotating Hexion link domains; auto-loading Fendrix captions (the sheet lists them; none were present in the live replies seen).
 
 
 Real-network validation on the owner's BDIX network; Firefox/Safari passes; a "gateway setup" page with a QR/copy-paste command; optional software decoding fallback (WebAssembly) for HEVC/DTS; episode list inside the watch page; Chromecast/AirPlay; per-title subtitle delay memory; migration to Video.js 10 if ArtPlayer stalls; a small cache for subtitle downloads to protect OpenSubtitles quota.
