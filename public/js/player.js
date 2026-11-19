@@ -29,6 +29,7 @@ export async function createPlayer(o) {
   const issues = new Set();
   let metaTimer = null;
   let cleanupMonitor = () => {};
+  let reportIssue = () => {};
 
   const urlFor = (s) => o.net.mediaUrl(s, { player: true });
   const nativeHls = () => document.createElement('video').canPlayType('application/vnd.apple.mpegurl') !== '';
@@ -66,6 +67,8 @@ export async function createPlayer(o) {
           if (destroyed) return;
           if (a.hls) a.hls.destroy();
           const hls = new Hls({ enableWorker: true });
+          // hls.js network failures never fire <video> 'error': report them (IMPLEMENTATION section 9)
+          hls.on(Hls.Events.ERROR, (_, data) => { if (data && data.fatal && a.hls === hls) reportIssue('error', data.details); });
           hls.loadSource(url);
           hls.attachMedia(video);
           a.hls = hls;
@@ -141,6 +144,7 @@ export async function createPlayer(o) {
       issues.add(key);
       o.cb.onIssue && o.cb.onIssue({ kind, stream, detail });
     };
+    reportIssue = issue;
     clearTimeout(metaTimer);
     metaTimer = setTimeout(() => { if (v.readyState < 1) issue('timeout'); }, 25000);
     let audioChecked = false;
@@ -158,7 +162,7 @@ export async function createPlayer(o) {
     v.addEventListener('loadedmetadata', onMeta);
     v.addEventListener('error', onErr);
     v.addEventListener('timeupdate', onTime);
-    cleanupMonitor = () => { clearTimeout(metaTimer); v.removeEventListener('loadedmetadata', onMeta); v.removeEventListener('error', onErr); v.removeEventListener('timeupdate', onTime); };
+    cleanupMonitor = () => { reportIssue = () => {}; clearTimeout(metaTimer); v.removeEventListener('loadedmetadata', onMeta); v.removeEventListener('error', onErr); v.removeEventListener('timeupdate', onTime); };
   }
 
   // ---------------- lifecycle wiring ----------------
@@ -179,10 +183,11 @@ export async function createPlayer(o) {
   const onHide = () => { if (art.duration) o.cb.onProgress && o.cb.onProgress(art.currentTime, art.duration); };
   window.addEventListener('pagehide', onHide);
 
+  // now, not on 'ready': ArtPlayer emits that on the first canplay, which a dead source never reaches
+  monitor(current);
   art.on('ready', () => {
     applySubStyle();
     rebuildSettings();
-    monitor(current);
     if (o.hasNext) art.controls.add({ name: 'next', position: 'right', html: 'Next episode', tooltip: 'Next episode', click: () => o.cb.onNext && o.cb.onNext() });
     // ArtPlayer only enables shortcuts after a click INSIDE the player; arriving from another page that would leave Space/M/F/C dead
     art.isFocus = true;
@@ -203,6 +208,9 @@ export async function createPlayer(o) {
       const url = urlFor(stream);
       art.type = stream.container === 'm3u8' ? 'm3u8' : '';
       resumeAt = t;
+      art.template.$player.classList.remove('rh-failed');
+      const box = art.template.$player.querySelector('.rh-fail');
+      if (box) box.remove();
       await art.switchUrl(url);
       art.play().catch(() => {});
       monitor(stream);
@@ -223,6 +231,15 @@ export async function createPlayer(o) {
       rebuildSettings();
     },
     get activeSubtitle() { return activeSub; },
+    /** Nothing left to try: stop the spinner, say so in the player. */
+    fail(message) {
+      if (destroyed) return;
+      art.loading.show = false;
+      art.template.$player.classList.add('rh-failed');
+      let box = art.template.$player.querySelector('.rh-fail');
+      if (!box) { box = document.createElement('div'); box.className = 'rh-fail'; box.setAttribute('role', 'status'); art.template.$player.append(box); }
+      box.textContent = message;
+    },
     applySubStyle,
     /** Re-enable keyboard shortcuts (e.g. after a sheet that sat on top of the player closed). */
     focus() { art.isFocus = true; },

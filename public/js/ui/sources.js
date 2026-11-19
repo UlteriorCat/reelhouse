@@ -22,14 +22,14 @@ export async function lookupSources(meta, { signal, onProgress, force = false, s
   return out;
 }
 
-const STATE_TEXT = { start: 'searching', ok: null, empty: 'no match', unreachable: 'unreachable', error: 'server error', timeout: 'timed out', slow: 'still searching', cancelled: 'cancelled' };
+const STATE_TEXT = { start: 'searching', ok: null, empty: 'no match', unreachable: 'unreachable', error: 'server error', timeout: 'timed out', slow: 'still searching', cancelled: 'cancelled', blocked: 'needs gateway' };
 export function providerChips(status) {
   return h('div', { class: 'pstat', 'aria-label': 'Source servers' }, PROVIDERS.map((p) => {
     const st = status[p.id];
     const enabled = store.settings().providers[p.id] !== false;
     if (!enabled) return h('span', { class: 'chip run' }, `${p.name}: off`);
     if (!st || st.state === 'start') return h('span', { class: 'chip run', dataset: { provider: p.id, state: 'start' } }, `${p.name}: searching`);
-    const cls = st.state === 'ok' ? 'ok' : st.state === 'unreachable' || st.state === 'error' || st.state === 'timeout' ? 'bad' : 'run';
+    const cls = st.state === 'ok' ? 'ok' : st.state === 'unreachable' || st.state === 'error' || st.state === 'timeout' || st.state === 'blocked' ? 'bad' : 'run';
     return h('span', { class: `chip ${cls}`, dataset: { provider: p.id, state: st.state } }, `${p.name}: ${st.state === 'ok' ? `${st.count} found` : STATE_TEXT[st.state]}`);
   }));
 }
@@ -46,26 +46,27 @@ export function guidance(status, meta, { retry } = {}) {
   const online = asked('public');
   const down = (st) => st === 'unreachable' || st === 'timeout';
   const bdixDown = bdix.length > 0 && bdix.every(down);
-  const onlineDown = online.length > 0 && online.every((st) => down(st) || st === 'error');
+  const onlineDown = online.length > 0 && online.every((st) => down(st) || st === 'error' || st === 'blocked');
+  const blockedHint = !gw && online.includes('blocked') ? h('li', null, 'Hexion\u2019s sites refuse requests from this website\u2019s edge server. The gateway (Connection settings) fetches them over your own connection.') : null;
   const btns = h('div', { class: 'actions' },
     retry ? h('button', { class: 'btn small', type: 'button', onClick: retry }, 'Try again') : null,
     h('button', { class: 'btn small', type: 'button', onClick: openSettingsEvent }, 'Connection settings'));
   if (!active.length) return h('div', { class: 'notice' }, h('h3', null, 'All sources are switched off'), h('p', null, 'Turn at least one source on in Settings.'), btns);
-  const onlineHint = onlineDown ? h('li', null, 'The online sources did not answer either: check this device\u2019s internet connection, or try again later.') : null;
+  const onlineHint = onlineDown && !blockedHint ? h('li', null, 'The online sources did not answer either: check this device\u2019s internet connection, or try again later.') : null;
   if (bdixDown) {
     return h('div', { class: 'notice warn' }, h('h3', null, gw ? 'The gateway could not reach the BDIX servers' : 'Could not reach the BDIX servers'),
       gw ? h('ul', null, h('li', null, 'Is the gateway still running and reachable from this device?'), h('li', null, 'Is this device\u2019s network (or the gateway\u2019s) connected to BDIX?'), h('li', null, 'Check the gateway address and token in Connection settings.'), onlineHint)
         : h('ul', null,
           h('li', null, 'You need to be on a BDIX-connected network (the servers are not on the public internet).'),
           h('li', null, 'Browsers block plain-http servers from an https site. Chrome/Edge ask for \u201clocal network\u201d permission for private addresses; Firefox/Safari do not allow it.'),
-          h('li', null, 'The most reliable fix is the small gateway app (see Connection settings).'), onlineHint),
+          h('li', null, 'The most reliable fix is the small gateway app (see Connection settings).'), onlineHint, blockedHint),
       btns);
   }
   if (onlineDown && !bdix.length) {
-    return h('div', { class: 'notice warn' }, h('h3', null, 'Could not reach the online sources'),
-      h('ul', null, h('li', null, 'Check this device\u2019s internet connection.'), h('li', null, 'The sources may be down or may have moved; try again later.')), btns);
+    return h('div', { class: 'notice warn' }, h('h3', null, blockedHint ? 'This source needs the gateway here' : 'Could not reach the online sources'),
+      blockedHint ? h('ul', null, blockedHint) : h('ul', null, h('li', null, 'Check this device\u2019s internet connection.'), h('li', null, 'The sources may be down or may have moved; try again later.')), btns);
   }
-  if (active.every((s) => s.state === 'empty' || down(s.state) || s.state === 'error')) {
+  if (active.every((s) => s.state === 'empty' || down(s.state) || s.state === 'error' || s.state === 'blocked')) {
     return h('div', { class: 'notice' }, h('h3', null, 'No matching files found'), h('p', null, `Nothing on the connected servers matches \u201c${meta.title}${meta.year ? ` (${meta.year})` : ''}\u201d${meta.type === 'tv' ? ` S${meta.season} E${meta.episode}` : ''}. Some servers may be unreachable (see above).`), btns);
   }
   return null;

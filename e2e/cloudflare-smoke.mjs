@@ -85,7 +85,7 @@ try {
     assert.equal((await get('/api/home', { method: 'POST' })).status, 405);
   });
   await t('edge proxy only allows https + allowlisted hosts (no ports, no userinfo, no lookalikes)', async () => {
-    for (const u of ['https://example.com/', 'http://flixhub.net/', 'https://flixhub.net:8443/', 'https://flixhub.net@evil.com/', 'https://flixhub.net.evil.com/']) {
+    for (const u of ['https://example.com/', 'https://flixhub.net/', 'http://4khdhub.one/', 'https://4khdhub.one:8443/', 'https://4khdhub.one@evil.com/', 'https://4khdhub.one.evil.com/']) {
       const r = await get('/api/proxy?u=' + encodeURIComponent(u)); assert.ok([400, 403].includes(r.status), `${u} -> ${r.status}`);
     }
   });

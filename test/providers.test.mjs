@@ -39,6 +39,18 @@ for (const sc of scenarios) {
   });
 }
 
+test('FlixHub is a BDIX server, like the original says ("FlixHub FTP: BDIX"): never sent through the Cloudflare edge proxy', async () => {
+  const fh = PROVIDERS.find((p) => p.id === 'bdix-fh');
+  const manifest = JSON.parse(readFileSync(new URL('../cloudstream-main/cloudstream/eclipsia/eclipsia-bdix/src/main/assets/manifest.json', import.meta.url), 'utf8'));
+  assert.match(manifest.scrapers.find((x) => x.id === 'bdix-fh').description, /^BDIX/);
+  assert.equal(fh.group, 'bdix');
+  assert.ok(!fh.edge, 'Cloudflare cannot reach BDIX hosts (measured: 504 from the deployed edge proxy)');
+  const seen = [];
+  const net = createNet(() => ({}), async (u) => { seen.push(String(u)); return new Response('<html></html>'); }, { edgeBase: 'https://site.test' });
+  await resolveStreams({ type: 'movie', tmdbId: 603, title: 'The Matrix', year: 1999 }, { net, enabled: Object.fromEntries(PROVIDERS.map((p) => [p.id, p.id === 'bdix-fh'])), DOMParser });
+  assert.ok(seen.length > 0 && seen.every((u) => u.startsWith('https://flixhub.net/')), 'straight from the browser (or the gateway): ' + seen.join(' '));
+});
+
 test('deliberate deviation: .mov/.m4v/.webm are accepted unless compat mode is on', async () => {
   const sc = scenarios.find((s) => s.id === 'df-movie-variant2');
   const std = await resolveStreams(sc.meta, { net: netFor(fakeFetch(sc.handler)), enabled: { 'bdix-cf': false, 'bdix-fh': false } });
@@ -61,6 +73,19 @@ test('release parsing: codec/audio tokens used for playability prediction', asyn
 });
 
 // ---- orchestrator behaviour ----
+test('failure classification: an edge-proxied provider whose site blocks Cloudflare is "blocked" (needs the gateway), not "error"', async () => {
+  assert.equal(classify({ attempts: 2, network: 0, http: 2, blocked: 2 }, 0), 'blocked');
+  assert.equal(classify({ attempts: 3, network: 1, http: 2, blocked: 1 }, 0), 'blocked', 'nothing got through, and the edge was refused');
+  assert.equal(classify({ attempts: 2, network: 0, http: 2, blocked: 0 }, 0), 'error');
+  assert.equal(classify({ attempts: 3, network: 0, http: 1, blocked: 1 }, 0), 'empty', 'some answers came back: an ordinary no-match');
+  assert.equal(classify({ attempts: 2, network: 0, http: 2, blocked: 2 }, 1), 'ok');
+  // end to end through the transport: Hexion via the edge proxy, every hop refused by Cloudflare
+  const blockedFetch = async () => new Response('error code: 1106', { status: 403, headers: { 'x-upstream-blocked': 'cloudflare' } });
+  const net = createNet(() => ({}), blockedFetch, { edgeBase: 'https://site.test' });
+  const r = await resolveStreams({ type: 'movie', tmdbId: 603, title: 'The Matrix', year: 1999, imdbId: 'tt0133093' }, { net, enabled: Object.fromEntries(PROVIDERS.map((p) => [p.id, p.id === 'hexion'])), DOMParser });
+  assert.equal(r.status.hexion.state, 'blocked');
+});
+
 test('failure classification: unreachable vs http error vs empty vs ok', async () => {
   const sc = scenarios.find((s) => s.id === 'df-movie-variant2');
   const only = { 'bdix-cf': false, 'bdix-fh': false };

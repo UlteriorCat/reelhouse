@@ -5,7 +5,7 @@ import { api } from '../api.js';
 import { PROVIDERS } from '../providers/index.js';
 import { SERVERS } from '../providers/df.js';
 import { endpoints as cfEndpoints } from '../providers/cf.js';
-import { endpoints as fhEndpoints, edge as FH_EDGE } from '../providers/fh.js';
+import { endpoints as fhEndpoints } from '../providers/fh.js';
 import * as fendrix from '../providers/fn.js';
 import * as hexion from '../providers/hx.js';
 import { SUB_LANGS, langName, subtitleStyle, SUB_COLORS } from '../subs.js';
@@ -22,7 +22,7 @@ export function openSettings() {
   const sheet = openSheet({ title: 'Settings' });
   const draw = () => {
     const s = store.settings();
-    const mode = net.mode(FH_EDGE ? { edge: true } : null);
+    const mode = net.mode(null);
 
     // ----- connection -----
     const gw = h('input', { class: 'field', type: 'url', placeholder: 'http://127.0.0.1:8787', value: s.gatewayUrl, 'aria-label': 'Gateway address', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
@@ -38,7 +38,7 @@ export function openSettings() {
         ['DhakaFlix 14', SERVERS[1].url + SERVERS[1].root, null],
         ['Circle FTP', cfEndpoints.primary + '/', null],
         ['Circle FTP (fallback)', cfEndpoints.fallback + '/', null],
-        ['FlixHub', fhEndpoints.base + '/', { edge: true }],
+        ['FlixHub', fhEndpoints.base + '/', null],
         ['Fendrix', fendrix.API_BASE[0] + '/', fendrix],
         ['Hexion', hexion.endpoints.base + '/', hexion],
       ];
@@ -56,7 +56,7 @@ export function openSettings() {
     };
     const connection = h('section', { class: 'set-group' },
       h('h3', null, 'Connection to BDIX servers'),
-      h('p', { style: { color: 'var(--dim)', fontSize: '14px' } }, mode === 'gateway' ? 'Requests go through your gateway (Fendrix still connects directly: it does not need it).' : 'Requests go straight from this browser (FlixHub and Hexion via the site\u2019s edge proxy). Browsers often block this for BDIX servers; the gateway fixes that. Fendrix always connects directly.'),
+      h('p', { style: { color: 'var(--dim)', fontSize: '14px' } }, mode === 'gateway' ? 'Requests go through your gateway (Fendrix still connects directly: it does not need it).' : 'Requests go straight from this browser (Hexion via the site\u2019s edge proxy). Browsers block this for BDIX servers (DhakaFlix, Circle FTP, FlixHub), and Hexion\u2019s sites refuse the edge proxy; the gateway fixes both. Fendrix always connects directly.'),
       h('div', { class: 'stack', style: { marginTop: '10px' } }, gw, tok,
         h('div', { class: 'actions', style: { marginTop: 0 } }, h('button', { class: 'btn small primary', type: 'button', onClick: save }, 'Save'), h('button', { class: 'btn small', type: 'button', onClick: test }, 'Test connection'))),
       diag,

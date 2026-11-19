@@ -336,3 +336,6 @@ body.is-watch .foot { display: none; }
 .admin .set-group .notice h3 { font-size: 15px; }
 .toast .dismiss { border-color: var(--line); color: var(--dim); min-width: 44px; padding: 0; display: grid; place-items: center; }
 .toast .dismiss .icon { width: 18px; height: 18px; }
+/* the player gave up on every source: no spinner, a plain message (details and actions are in the banner below it) */
+.rh-failed .art-loading { display: none !important; }
+.rh-fail { position: absolute; inset: 0; z-index: 30; display: grid; place-content: center; padding: 20px; text-align: center; color: var(--text); font-size: 16px; background: rgba(0, 0, 0, .55); pointer-events: none; }

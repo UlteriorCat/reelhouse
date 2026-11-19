@@ -6,12 +6,11 @@ import { makeStream } from './common.js';
 export const id = 'bdix-fh';
 export const name = 'FlixHub';
 /** 'bdix' = reachable only from a BDIX network; 'public' = on the open internet. Used to explain failures. */
-export const group = 'public';
+// BDIX (original: "FlixHub FTP: BDIX"); Cloudflare cannot reach it, so no edge proxy (IMPLEMENTATION section 6)
+export const group = 'bdix';
 export const BASE_URL = 'https://flixhub.net';
 /** Mutable on purpose (see cf.js). */
 export const endpoints = { base: BASE_URL };
-/** FlixHub is a public HTTPS site, so the Pages edge proxy (/api/proxy) can fetch it when the browser is blocked by CORS. */
-export const edge = true;
 
 export const toSlug = (title) => title.toLowerCase().replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 

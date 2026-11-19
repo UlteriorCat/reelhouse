@@ -133,13 +133,35 @@ test('sub download: OS flow (login -> download -> gz link) and SSRF guards', asy
 });
 
 test('edge proxy: allowlisted https hosts only', async () => {
-  const up = upstream({ '/watch/movie/x': (u, i, r) => r('<html>theaterPlayer</html>') });
-  const ok = await handleApi(new Request('http://x.test/api/proxy?u=' + encodeURIComponent('https://flixhub.net/watch/movie/x')), {}, { fetch: up.f });
-  assert.equal(ok.status, 200); assert.match(await ok.text(), /theaterPlayer/);
-  for (const u of ['https://example.com/', 'http://flixhub.net/x', 'https://flixhub.net:8443/x', 'https://flixhub.net@evil.com/', 'https://user:p@flixhub.net/', 'https://flixhub.net.evil.com/', 'nonsense']) {
+  const up = upstream({ '/the-matrix/': (u, i, r) => r('<html>movie page</html>') });
+  const ok = await handleApi(new Request('http://x.test/api/proxy?u=' + encodeURIComponent('https://4khdhub.one/the-matrix/')), {}, { fetch: up.f });
+  assert.equal(ok.status, 200); assert.match(await ok.text(), /movie page/);
+  // FlixHub is a BDIX server (Cloudflare cannot reach it): not proxied by default
+  for (const u of ['https://flixhub.net/watch/movie/x', 'https://example.com/', 'http://4khdhub.one/x', 'https://4khdhub.one:8443/x', 'https://4khdhub.one@evil.com/', 'https://user:p@4khdhub.one/', 'https://4khdhub.one.evil.com/', 'nonsense']) {
     const r = await handleApi(new Request('http://x.test/api/proxy?u=' + encodeURIComponent(u)), {}, { fetch: up.f });
     assert.ok([400, 403].includes(r.status), `${u} -> ${r.status}`);
   }
+});
+
+test('edge proxy: a Cloudflare block of the upstream (error 1106, bot challenge) is marked, so the app can say "needs gateway"', async () => {
+  // measured Nov 2026 from the deployed site: 4khdhub.one answers Cloudflare Workers with 403 "error code: 1106",
+  // hubdrive.blog / hubcloud.mov with a 403 "Just a moment..." challenge page
+  const pages = {
+    '/ban/': (u, i, r) => r('error code: 1106', 403),
+    '/challenge/': (u, i, r) => r('<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title></head></html>', 403, { 'cf-mitigated': 'challenge' }),
+    '/challenge-nohdr/': (u, i, r) => r('<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>', 503),
+    '/missing/': (u, i, r) => r('not found', 404),
+    '/forbidden/': (u, i, r) => r('<html>members only</html>', 403),
+    '/ok/': (u, i, r) => r('<html>ok</html>'),
+    '/ok-lookalike/': (u, i, r) => r('error code: 1106 <title>Just a moment...</title> (an article about Cloudflare errors)'),
+  };
+  const up = upstream(pages);
+  const call = (p) => handleApi(new Request('http://x.test/api/proxy?u=' + encodeURIComponent('https://4khdhub.one' + p)), {}, { fetch: up.f });
+  for (const p of ['/ban/', '/challenge/', '/challenge-nohdr/']) {
+    const r = await call(p);
+    assert.ok(!r.ok, p); assert.equal(r.headers.get('x-upstream-blocked'), 'cloudflare', p);
+  }
+  for (const p of ['/missing/', '/forbidden/', '/ok/', '/ok-lookalike/']) assert.equal((await call(p)).headers.get('x-upstream-blocked'), null, p + ' is an ordinary answer');
 });
 
 test('APP_NAME sets the OpenSubtitles User-Agent (must match your registered consumer); default is RafTV', async () => {

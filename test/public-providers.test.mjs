@@ -348,9 +348,10 @@ test('hexion: cancelling while file pages are still loading reports cancelled, n
 });
 
 // ---------------------------------------------------------------- edge proxy ----
-test('edge proxy allow-list: FlixHub + the Hexion chain, exact names only; Fendrix hosts are not proxied', async () => {
+test('edge proxy allow-list: the Hexion chain, exact names only; Fendrix and FlixHub (BDIX) hosts are not proxied', async () => {
   const hosts = proxyHosts({});
-  for (const h of ['flixhub.net', '4khdhub.one', 'greenmotors.club', 'hubdrive.blog', 'hubcloud.mov', 'gamerxyt.com']) assert.ok(hosts.includes(h), h);
+  for (const h of ['4khdhub.one', 'greenmotors.club', 'hubdrive.blog', 'hubcloud.mov', 'gamerxyt.com']) assert.ok(hosts.includes(h), h);
+  for (const h of ['flixhub.net', 'www.flixhub.net']) assert.ok(!hosts.includes(h), h + ' is a BDIX server: Cloudflare cannot reach it');
   for (const h of ['api.wing.st', 'enc-dec.app', 'cinejoy.pk', 'api.shegu.xyz']) assert.ok(!hosts.includes(h), h + ' is reached directly, not through the edge');
   const up = async () => new Response('<html>ok</html>');
   const call = (u) => handleApi(new Request('http://x.test/api/proxy?u=' + encodeURIComponent(u)), {}, { fetch: up });

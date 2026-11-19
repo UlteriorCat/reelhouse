@@ -29,11 +29,11 @@ Contents: [1 Goals](#1-goals-and-constraints) · [2 Architecture](#2-architectur
  │ hash router ─► views (home, details, watch, ...) │  /api/...   │ lib/api.js  (router)             │
  │ store.js   (localStorage: settings, history,     │────────────►│  ├ lib/tmdb.js   TMDB (key stays  │──► api.themoviedb.org
  │             progress, lists, account sync)       │             │  │   server-side, edge-cached)    │
- │ providers/ (DhakaFlix, Circle FTP, FlixHub,      │             │  ├ lib/subs.js   OpenSubtitles /  │──► opensubtitles.com
+ │ providers/ (BDIX: DhakaFlix, Circle FTP, FlixHub;│             │  ├ lib/subs.js   OpenSubtitles /  │──► opensubtitles.com
  │   Fendrix ─► enc-dec.app, api.wing.st, CDN;      │             │  │   Stremio addon, SSRF-guarded  │──► opensubtitles-v3.strem.io
  │   Hexion via /api/proxy)                         │             │  │                                │
  │ net.js     direct | gateway | edge transport     │             │  │                                │
- │ player.js  ArtPlayer (lazy)                      │             │  └ /api/proxy    allow-listed     │──► flixhub.net, 4khdhub.one chain
+ │ player.js  ArtPlayer (lazy)                      │             │  └ /api/proxy    allow-listed     │──► 4khdhub.one chain (blocks Cloudflare)
  └───────┬──────────────────────┬───────────────────┘             │      public hosts only            │
          │ only after a click   │                                 └──────────────────────────────────┘
          ▼                      ▼
@@ -81,11 +81,11 @@ details page ── Download ──► sources sheet: same lookup (waits for all
 
 * Nothing in steps 2-5 runs while browsing. The browser tests assert that the BDIX mock server has seen **zero requests** after loading home, search and details pages.
 * **Settle window.** A dead server can take 15-25 s to time out. Without a window the player would wait for it even when another provider already has a working file. With it, slow providers are aborted and reported as "still searching"; the Sources sheet can still show them later.
-* **Failure explanation.** The original extension swallowed every error. Here each provider's result is classified: *ok*, *empty* (servers answered, nothing matched), *error* (HTTP errors), *unreachable* (every request failed at the network level), *timeout*, *slow*. The UI turns that into advice (not on BDIX? mixed content? set up the gateway).
+* **Failure explanation.** The original extension swallowed every error. Here each provider's result is classified: *ok*, *empty* (servers answered, nothing matched), *error* (HTTP errors), *blocked* (an edge-proxied site refused Cloudflare itself: only the gateway helps), *unreachable* (every request failed at the network level), *timeout*, *slow*. The UI turns that into advice (not on BDIX? mixed content? set up the gateway).
 
 ## 6. The providers (port)
 
-Five providers. Three BDIX-era sources (`df`, `cf`, `fh`) and two online sources (`fn` Fendrix, `hx` Hexion, see the end of this section). Each exports a `group` (`'bdix'` or `'public'`), which the UI uses to explain failures.
+Five providers. Three BDIX servers (`df`, `cf`, `fh`) and two online sources (`fn` Fendrix, `hx` Hexion, see the end of this section). Each exports a `group` (`'bdix'` or `'public'`), which the UI uses to explain failures.
 
 `public/js/providers/{df,cf,fh}.js` are a browser port of the three scrapers in `eclipsia-bdix` (see the scraping reference for the original algorithms: endpoints, request bodies, filters, scoring).
 
@@ -103,7 +103,7 @@ Five providers. Three BDIX-era sources (`df`, `cf`, `fh`) and two online sources
 | Browsers cannot send `User-Agent`/`Referer` | The gateway adds them (section 7) |
 | Endpoints are overridable objects | Lets tests and advanced users repoint servers |
 
-Provider endpoints: DhakaFlix `http://172.16.50.12` and `.14` (JSON `POST`), Circle FTP `http://new.circleftp.net:5000` with fallback `http://15.1.1.50:5000` (REST `GET`), FlixHub `https://flixhub.net` (HTML watch pages).
+Provider endpoints: DhakaFlix `http://172.16.50.12` and `.14` (JSON `POST`), Circle FTP `http://new.circleftp.net:5000` with fallback `http://15.1.1.50:5000` (REST `GET`), FlixHub `https://flixhub.net` (HTML watch pages). **FlixHub is a BDIX server** (`group: 'bdix'`): the original manifest calls it "FlixHub FTP: BDIX" and `flixhub.net` resolves to a Bangladeshi address (103.123.169.192) that the public internet cannot reach. Until Nov 19, 2026 the port treated it as a public site and sent it through the Cloudflare edge proxy, which answered 504 after 10 s (measured on the deployment); it now goes straight from the browser or through the gateway like the other BDIX servers.
 
 ### Online sources: Fendrix and Hexion
 
@@ -115,9 +115,9 @@ Provider endpoints: DhakaFlix `http://172.16.50.12` and `.14` (JSON `POST`), Cir
 |---|---|---|
 | Lookup chain | `enc-dec.app/api/enc-cinejoy` (session) → `POST api.wing.st/g` (AES-256-GCM sealed JSON) → master playlist | `4khdhub.one` (WP API by IMDb id, else `/?s=`) → link wrapper (`greenmotors.club`, base64+ROT13) → `hubdrive.blog` / `hubcloud.mov` → file page `gamerxyt.com/hubcloud.php` |
 | CORS | `Access-Control-Allow-Origin: *` on the session broker and `/g`, any Origin accepted, preflight allowed | none on any hop |
-| Transport chosen | **direct from the browser** (`direct: true`), even when a gateway is set | **edge proxy** (`edge: true`), or the gateway when set |
+| Transport chosen | **direct from the browser** (`direct: true`), even when a gateway is set | **edge proxy** (`edge: true`), or the gateway when set. From Cloudflare's network the sites refuse the proxy (19 Nov 2026: `4khdhub.one` 403 "error code: 1106", `hubdrive.blog`/`hubcloud.mov` 403 bot challenge), so **on a deployment Hexion needs the gateway**; the proxy marks such replies (`x-upstream-blocked`) and the app shows "Hexion: needs gateway" |
 | Fallback endpoint | `api.shegu.st` answers 530 without CORS (logged by the browser as a CORS error; harmless) | - |
-| Media | HLS whose playlists and segments are named `.jpg` and served as `image/jpeg`; the CDN answers **404 to any request carrying an `Origin` header** | `*.workers.dev` MKV/MP4 (`206`, `ACAO: *`, no Referer needed), sometimes signed R2 URLs; individual files are often quota-limited upstream (Google Drive "download quota exceeded") |
+| Media | HLS whose playlists and segments are named `.jpg` and served as `image/jpeg`; the CDN answers **404 to any request whose `Origin` is not its own site** (`https://cinejoy.pk`); requests without an Origin are served. A page cannot send either, so every page request (fetch, hls.js) is refused | `*.workers.dev` MKV/MP4 (`206`, `ACAO: *`, no Referer needed), sometimes signed R2 URLs; individual files are often quota-limited upstream (Google Drive "download quota exceeded") |
 | Original scraper result today | works | **0 streams**: the file pages no longer link the hosts it accepts |
 
 **Parity.** `test/public-providers.test.mjs` runs the original scraper files unchanged in a `vm` sandbox (their only host capability is `fetch`) against the same mock upstreams as the ports, shaped like the live pages, and requires identical streams (URL, quality, order) and identical requests apart from the TMDB call the port does not need. Movie and TV, HLS master with and without audio renditions, file qualities, WordPress-API and search paths.
@@ -151,7 +151,8 @@ A website cannot do what the Android plugin does. The constraints, and how each 
 | `<video>` cannot send headers | Same | Gateway `/s` endpoint streams with them |
 | Cross-origin downloads ignore `download=` | Browser may play instead of save | Gateway `?dl=1` sets `Content-Disposition: attachment` |
 | A page request always carries `Origin` (cannot be removed) | The Fendrix HLS CDN answers 404 to it, so in-page players (hls.js) cannot play those streams | Built-in HLS (Safari, iOS, Chrome 142+) sends media requests without an Origin and plays them. Without built-in HLS (Firefox): with a gateway, the in-page player gets the gateway URL (`/s?hls=1`) and hls.js plays it; without one the stream is ranked unplayable (the reason names the gateway) and the external-player links remain |
-| Public sites without CORS (FlixHub, the Hexion chain) | Browser cannot read them | Edge proxy `/api/proxy`: https GET only, exact host allow-list (`DEFAULT_EDGE_PROXY_HOSTS` in `lib/api.js`, override with `EDGE_PROXY_HOSTS`), text only, 2 MB cap |
+| Public sites without CORS (the Hexion chain) | Browser cannot read them | Edge proxy `/api/proxy`: https GET only, exact host allow-list (`DEFAULT_EDGE_PROXY_HOSTS` in `lib/api.js`, override with `EDGE_PROXY_HOSTS`), text only, 2 MB cap |
+| Sites that refuse Cloudflare (the Hexion chain, measured 19 Nov 2026) | The edge proxy gets a 403 block page (`error code: 1106`, "Just a moment...") | The proxy marks it (`x-upstream-blocked: cloudflare`, never cached); the provider state is `blocked`, shown as "needs gateway" with an explanation. The gateway fetches over the user's own connection (live: 8 Hexion streams in 3.4 s) |
 
 **Gateway design** (`gateway/bdix-gateway.mjs`, 307 lines, no dependencies): `POST /p` takes a JSON envelope for small lookups (sent as `text/plain` so the browser does not need a preflight); `GET /s` streams media and forwards `Range`; with `hls=1` it sniffs the body (CDNs serve playlists under any name and type) and, for an HLS playlist, rewrites every URI (lines and `URI="..."` attributes) to a relative `s?u=...` link carrying the same token and headers, so players need neither CORS nor an Origin-free request from the CDN; each rewritten URL is re-checked by the address policy; every request needs a token unless bound to loopback; a non-loopback bind without a token refuses to start. **SSRF protection** mirrors the extension's address policy: addresses are classified as *public*, *private* (only if allow-listed), or *never* (link-local, metadata, multicast, unspecified). DNS results are validated at connect time (defeats rebinding), IP literals are validated up front (Node skips `lookup` for literals), redirects are re-validated per hop, and IPv6 is parsed to bytes so IPv4-mapped, NAT64 and 6to4 forms cannot smuggle a private address.
 
@@ -190,7 +191,7 @@ Consequences built into the app:
 
 * **Never gate on `canPlayType`** for MOV/MKV.
 * **Prediction before playing** (`streams.js`): file names are parsed for video codec and audio codecs; sources are ranked *playable → risky → unlikely* (HEVC when the browser cannot decode it, AVI, XviD, MKV on Safari/iOS, files whose only audio is DD+/AC-3/TrueHD/DTS), then by resolution, container friendliness (MP4 > MOV > MKV) and provider. The default pick is therefore the best file the browser can most likely play, not the biggest. A setting switches back to pure quality order.
-* **Health monitor after starting** (`player.js`): `videoWidth === 0` after metadata → video unsupported; no decoded audio after 2.5 s of playback (`webkitAudioDecodedByteCount`, `mozHasAudio`) → audio unsupported; media error or 25 s without metadata → failure. Video failures switch to the next playable source automatically (with a toast); silent audio shows a banner offering another source, an external player or a download.
+* **Health monitor after starting** (`player.js`): `videoWidth === 0` after metadata → video unsupported; no decoded audio after 2.5 s of playback (`webkitAudioDecodedByteCount`, `mozHasAudio`) → audio unsupported; media error, a fatal hls.js error (hls.js network failures never fire `<video>` `error`) or 25 s without metadata → failure. The watchdog is armed when the player is created, not on ArtPlayer's `ready` (that is the first `canplay`, which a dead source never reaches: before Nov 19, 2026 this left an endless spinner). Video failures switch to the next playable source automatically (with a toast); when none is left the player stops spinning and says so (`fail()`), and the banner below gives the known reason (e.g. built-in HLS or the gateway) and the external-player and download links; silent audio shows a banner offering another source, an external player or a download.
 * **External players**: Android intents (VLC, MX Player), iOS `vlc-x-callback` / Infuse, and an `.m3u` playlist for VLC, mpv or PotPlayer on desktop. The URL given is the gateway URL when a gateway is configured.
 * **Built-in HLS rule**: streams flagged `needsNativeHls` (Fendrix) are ranked unplayable when `browserCaps().nativeHls` is false and no gateway is set, because their CDN refuses the Origin header that hls.js requests carry; the player already prefers built-in HLS when available. VC-1 video is ranked unplayable everywhere.
 * **Not supported:** software decoding of HEVC/DTS/AC-3 in the browser (would need WebAssembly ffmpeg; large and slow on phones). The fallbacks above are the practical answer.
@@ -227,8 +228,8 @@ Consequences built into the app:
 
 | Suite | Count | What it proves |
 |---|---|---|
-| Unit / integration (`npm test`) | 127 | API router and TMDB slimming, key handling, error mapping, subtitle service and SSRF guards; gateway (auth, envelope, Range, CORS, downloads, address matrix); **providers vs. golden output of the original scrapers (14 scenarios, same requests)**; **Fendrix and Hexion vs. the original scraper files executed in a `vm` (same streams, same requests), their deviations, AES-GCM (WebCrypto and software), cancel at every stage, the edge allow-list**; orchestration (failure classes, timeouts, cancel, settle window, dedupe); client logic (store, ranking, playability, subtitle conversion, router, API client) |
-| Browser end-to-end (`npm run e2e`) | 35 browser end-to-end steps | Real Chromium 153 with a mock BDIX server on real sockets, real test videos, the real gateway. See list below |
+| Unit / integration (`npm test`) | 130 | API router and TMDB slimming, key handling, error mapping, subtitle service and SSRF guards; gateway (auth, envelope, Range, CORS, downloads, address matrix); **providers vs. golden output of the original scrapers (14 scenarios, same requests)**; **Fendrix and Hexion vs. the original scraper files executed in a `vm` (same streams, same requests), their deviations, AES-GCM (WebCrypto and software), cancel at every stage, the edge allow-list**; orchestration (failure classes, timeouts, cancel, settle window, dedupe); client logic (store, ranking, playability, subtitle conversion, router, API client) |
+| Browser end-to-end (`npm run e2e`) | 37 browser end-to-end steps | Real Chromium 153 with a mock BDIX server on real sockets, real test videos, the real gateway. See list below |
 | Cloudflare runtime (`npm run smoke:cf`) | 9 Cloudflare runtime checks | `wrangler pages dev` (workerd): bundling of the Function with `../../lib` imports, `_headers`, `_routes.json`, validation, SSRF guards, no key leakage |
 
 E2E coverage: home/search/details/My List; layouts at 390/820/1440 px; **zero BDIX requests until a click**; download sheet (4 parallel POSTs, ranking, warnings, anchors, clipboard API and fallback, `.m3u`); playback of MP4, MOV and MKV with sound; resume, Continue watching, next episode; HEVC and AC-3 detection with fallback; subtitles (auto-load, Latin-1, size/height/colour/background, language search, upload, Off); gateway mode (UA injected, Range proxied, attachment download, token enforced); unreachable and CORS-blocked servers; settings effects; Android/iOS/desktop external-player links; route errors; missing-API-key setup notice; lazy loading and byte budget; accessibility; keyboard shortcuts; 8 cold-start navigation races; phone portrait/landscape and tablet layouts; **Fendrix** (sealed lookup answered in the browser, decrypted, played through built-in HLS from a local CDN that refuses requests with an Origin, never through the configured gateway); **Hexion** (4kHdHub chain through the edge proxy, size shown, file played from its host); guidance when BDIX and online sources are down. The browser's requests to the online providers' hosts are answered by the harness or cut off, so no step reaches the real internet. The run fails on any browser console error or CSP violation (there are none; the Fendrix step names the one expected error, the fallback endpoint's CORS failure).
@@ -255,6 +256,9 @@ E2E coverage: home/search/details/My List; layouts at 390/820/1440 px; **zero BD
 15. *Hexion as first committed*: parsed without the injected `DOMParser` (crashed outside a browser), swallowed `AbortError`, and recognised none of today's file hosts.
 16. *`imdbId` never reached the providers* (watch and details pages), so Hexion's IMDb lookup and Fendrix's `imdb=` parameter were skipped; the lookup cache made the details-page meta leak into the watch page.
 17. *Test isolation*: the gateway E2E step let FlixHub (and then Hexion) lookups through the real gateway to the real internet (step time fell from 27 s to 2.5 s once pointed at the mock).
+18. *Endless spinner when the first source never loads* (reported as "Fendrix: 1 found, never plays"): the watchdog was armed on ArtPlayer's `ready` (first `canplay`), and fatal hls.js errors went nowhere. Without built-in HLS, hls.js is refused by the Fendrix CDN and nothing reported it.
+19. *FlixHub routed through the Cloudflare edge proxy* although it is a BDIX server (504 on the deployment).
+20. *Hexion shown as "server error"* on the deployment: its sites block Cloudflare (now `blocked`, "needs gateway").
 11. Smaller UX fixes: hero crowded out the first rail; three watch-page buttons wrapped; notices inside sheets had dim headings; Subtitle tooltip ran into its label; slow providers delayed playback (settle window).
 
 ## 14. Performance
@@ -263,7 +267,7 @@ Measured in the E2E run (desktop viewport, local server):
 
 | Item | Size |
 |---|---|
-| App JavaScript (31 modules, unminified) | 200 KB raw, **61 KB gzipped**; the home page loads 165 KB of it (Settings, the account screens, Admin and `aesgcm.js` load on first use) |
+| App JavaScript (31 modules, unminified) | 205 KB raw, **62 KB gzipped**; the home page loads 169 KB of it (budget 170 KB) (Settings, the account screens, Admin and `aesgcm.js` load on first use) |
 | CSS | 21 KB raw, 5 KB gzipped |
 | Font | 41 KB (woff2) |
 | ArtPlayer (loaded on the watch page only) | 141 KB raw, 36 KB gzipped |
@@ -276,7 +280,8 @@ The tests assert that the player libraries are **not** requested on the home pag
 ## 15. Known limitations and what was not verified
 
 * **Fendrix and Hexion were checked against the live services** (18-19 Nov 2026, from the sandbox): the ports return the same streams as the original scrapers where those still work, Hexion's deviation finds 7 movie / 4 episode files the original misses, and the Fendrix HLS played in Chromium 153. Not verified: the edge proxy *on Cloudflare* fetching the Hexion chain (sites may block Cloudflare IPs; only the same handler in Node was run), real Firefox (no built-in HLS: Fendrix needs the gateway there; tested in Chromium with built-in HLS hidden, hls.js through the real gateway), and how often the link-wrapper/HubCloud domains change (update `EDGE_PROXY_HOSTS` when Hexion shows "server error").
-* **No other live service was reachable from the build environment**: the BDIX servers, FlixHub, TMDB, OpenSubtitles and a real Cloudflare deployment. TMDB, Stremio and FlixHub are mocked with the documented response shapes; BDIX response shapes are inferred from the original parsers. Run *Test connection* and a real title on your network before relying on it.
+* **From Cloudflare's edge Hexion is blocked** (measured on the deployment, 19 Nov 2026): on `pages.dev` Hexion works only with the gateway. Fendrix plays without a gateway only in browsers with built-in HLS (Chrome/Edge 142+, Safari, iOS); elsewhere the app now says so at once.
+* **Not reachable from the build environment**: the BDIX servers (including FlixHub), TMDB and OpenSubtitles; the deployment was only read (public GETs). TMDB, Stremio and FlixHub are mocked with the documented response shapes; BDIX response shapes are inferred from the original parsers. Run *Test connection* and a real title on your network before relying on it.
 * **Only Chromium was automated.** Firefox and Safari behaviour (mixed content, `webkitAudioDecodedByteCount` equivalents, MKV, hotkeys) is by design/reading, not by test. The audio-silence check relies on `webkitAudioDecodedByteCount` (Chromium/WebKit) and `mozHasAudio` (Firefox).
 * **Real devices, https and Chrome's Local Network Access prompt flow** were not exercised; tests run over http on loopback. The mixed-content/permission statements come from Chrome's documentation and general browser rules.
 * **Headless audio**: "audio is decoding" is measured by decoded byte counts, not by listening.
