@@ -9,7 +9,7 @@ pages_build_output_dir = "public"
 # Accounts (optional): create the database with `npx wrangler d1 create raftv-accounts`, paste its id below and
 # un-comment. Without this binding the site works with device-only history and lists. Secrets ADMIN_USERNAME and
 # ADMIN_PASSWORD create the first admin (README, "Accounts").
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "raftv-accounts"
-# database_id = "paste-the-id-printed-by-wrangler-d1-create"
+[[d1_databases]]
+binding = "DB"
+database_name = "raftv-accounts"
+database_id = "c4cc6e71-3c18-4fec-bda9-1865b63a5ac6"
