@@ -39,7 +39,7 @@
 > [!IMPORTANT]
 > **Key architectural difference from existing BDIX providers**: Both Fendrix and Hexion use **public HTTPS endpoints only**. They do NOT need the BDIX gateway. They CAN be fetched server-side via the edge proxy, or even directly from the browser (if CORS allows), or via the gateway if one is configured.
 
-## How Existing Raflix Providers Work
+## How Existing RafTV Providers Work
 
 ```mermaid
 flowchart LR
@@ -88,7 +88,7 @@ flowchart LR
 
 ### Design Decisions
 
-1. **No TMDB call in provider** — Raflix already has the title, year, and IMDb ID from TMDB details. The watch page passes `meta` with all this info. The original scrapers make redundant TMDB calls; we skip them (same pattern as existing df/cf/fh providers).
+1. **No TMDB call in provider** — RafTV already has the title, year, and IMDb ID from TMDB details. The watch page passes `meta` with all this info. The original scrapers make redundant TMDB calls; we skip them (same pattern as existing df/cf/fh providers).
 
 2. **Transport**: Both providers use public HTTPS. We'll mark them `edge: true` so the edge proxy (`/api/proxy`) is used when no gateway is configured — same pattern as FlixHub. Need to add their hosts to `EDGE_PROXY_HOSTS`.
 

@@ -1,7 +1,7 @@
 # Notices
 
-## Raflix
-Copyright (C) the Raflix authors. Licensed under the **GNU General Public License v3.0** (see `LICENSE`), because it contains code derived from a GPL-3.0 project (below).
+## RafTV
+Copyright (C) the RafTV authors. Licensed under the **GNU General Public License v3.0** (see `LICENSE`), because it contains code derived from a GPL-3.0 project (below).
 
 ## Derived code: CloudStream BDIX scrapers
 `public/js/providers/df.js`, `cf.js`, `fh.js` (and the parsing in `common.js`) are a browser port of the three scrapers in **eclipsia-bdix** from the CloudStream extension repository at `https://gitea.com/eclipsia/cloudstream`, licensed GPL-3.0. The algorithms (search patterns, filters, scoring, extraction order) follow the originals; the code was rewritten for browsers and extended (see `docs/IMPLEMENTATION.md`, section 6). `test/fixtures/golden.json` contains outputs recorded from the original scrapers; it is data, not code.
@@ -22,4 +22,4 @@ If you distribute or host this site for others, GPL-3.0 requires that you keep t
 ## Data and services
 * This product uses the TMDB API but is not endorsed or certified by TMDB. Metadata and images are provided by TMDB (free for non-commercial use with attribution).
 * Subtitles come from OpenSubtitles (official API when configured) or the public Stremio "OpenSubtitles v3" addon. Follow their terms of use.
-* Raflix hosts no media. Sources are provided by third-party servers you configure and connect to.
+* RafTV hosts no media. Sources are provided by third-party servers you configure and connect to.

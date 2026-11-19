@@ -12,4 +12,4 @@ OPENSUBTITLES_PASSWORD=
 # ADMIN_PASSWORD=a-long-random-password   (secret; creates the first admin on first sign-in)
 # PBKDF2_ITERATIONS=100000                 (10000-100000; lower it if the Workers free plan CPU limit is hit)
 # Optional: product name sent as the OpenSubtitles User-Agent. Set it to match the consumer you registered at opensubtitles.com.
-# APP_NAME=Raflix
+# APP_NAME=RafTV

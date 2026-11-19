@@ -1,6 +1,6 @@
 # HANDOFF: start here
 
-**Raflix**: a streaming-style website on Cloudflare Pages (`*.pages.dev`, https). It browses TMDB (free key), and plays or downloads titles from **BDIX-only servers** (Bangladesh local network) when the user presses Play or Download. Built-in player (ArtPlayer), OpenSubtitles subtitles, phone/tablet/desktop layout. It is a browser port of the GPL-3.0 "eclipsia-bdix" CloudStream plugin.
+**RafTV**: a streaming-style website on Cloudflare Pages (`*.pages.dev`, https). It browses TMDB (free key), and plays or downloads titles from **BDIX-only servers** (Bangladesh local network) when the user presses Play or Download. Built-in player (ArtPlayer), OpenSubtitles subtitles, phone/tablet/desktop layout. It is a browser port of the GPL-3.0 "eclipsia-bdix" CloudStream plugin.
 
 ## Status
 
@@ -74,9 +74,9 @@ Real-network validation; Firefox/Safari pass; gateway setup helper page; WebAsse
 Copy, fill the `<...>` parts, and paste as the first message:
 
 ```text
-You are continuing work on "Raflix", a streaming-style website on Cloudflare Pages that
-plays titles from BDIX-only servers. The project is the folder I attached (raflix.zip,
-extract it and `cd raflix`).
+You are continuing work on "RafTV", a streaming-style website on Cloudflare Pages that
+plays titles from BDIX-only servers. The project is the folder I attached (raftv.zip,
+extract it and `cd raftv`).
 
 READ FIRST, in this order, before changing anything:
 1. HANDOFF.md  2. CLAUDE.md  3. the sections of docs/IMPLEMENTATION.md that CLAUDE.md maps to

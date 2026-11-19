@@ -1,4 +1,4 @@
-# Raflix
+# RafTV
 
 A fast, streaming-style website for browsing what is trending (TMDB) and playing or downloading titles from **BDIX sources**, hosted on **Cloudflare Pages**. Phone, tablet and desktop layouts; no framework; about 167 KB of app JavaScript on the home page (uncompressed); the video player loads only when you press Play.
 
@@ -102,11 +102,11 @@ Notes
 
 Without this the site works as before: history and lists live on each device. With it, people sign in (accounts need an **invite code** from you) and their history, lists, resume positions and playback settings follow them to every device.
 
-1. Create the database (once): `npx wrangler d1 create raflix-accounts`. It prints a `database_id`.
+1. Create the database (once): `npx wrangler d1 create raftv-accounts`. It prints a `database_id`.
 2. In `wrangler.toml`, un-comment the `[[d1_databases]]` block and paste that `database_id`, then commit. (This project has a `wrangler.toml`, which Cloudflare treats as the source of truth for the Pages project's bindings, so bind the database there rather than only in the dashboard.) The tables are created automatically on first use.
 3. Add two **secrets** (dashboard *Settings → Variables and Secrets*, or the terminal): **`ADMIN_USERNAME`** (e.g. `admin`) and **`ADMIN_PASSWORD`** (at least 10 characters; a long random one):
-   `npx wrangler pages secret put ADMIN_USERNAME --project-name raflix`
-   `npx wrangler pages secret put ADMIN_PASSWORD --project-name raflix`
+   `npx wrangler pages secret put ADMIN_USERNAME --project-name raftv`
+   `npx wrangler pages secret put ADMIN_PASSWORD --project-name raftv`
 4. Redeploy, open the site, *Settings → Account → Sign in* with those two values: that first sign-in creates the admin account. Then *Change password* there if you like; after the first sign-in the secret is no longer used to sign in (the database is).
 5. *Settings → Account → Admin*: generate invite codes (one person or several, with an expiry), send them; see who joined; reset a forgotten password (gives you a temporary one to pass on); remove users; disable codes.
 

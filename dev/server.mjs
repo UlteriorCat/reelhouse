@@ -74,7 +74,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   env.DB = createD1(path.resolve(here, '../.wrangler/dev-accounts.sqlite'));
   const port = Number(process.env.PORT || 8788);
   createDevServer({ env }).listen(port, () => {
-    console.log(`Raflix dev server: http://localhost:${port}`);
+    console.log(`RafTV dev server: http://localhost:${port}`);
     if (!env.TMDB_API_KEY) console.log('  (TMDB_API_KEY is not set: the home page will show the setup notice)');
     console.log(env.ADMIN_USERNAME ? `  accounts: local database; first admin sign-in as ${env.ADMIN_USERNAME} (ADMIN_PASSWORD in .dev.vars)` : '  accounts: local database; set ADMIN_USERNAME / ADMIN_PASSWORD in .dev.vars to create the first admin');
   });
